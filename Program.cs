@@ -1,4 +1,6 @@
+using CartoonArchive.Api;
 using CartoonArchive.Data;
+using CartoonArchive.Storage;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -10,6 +12,8 @@ builder.Services.AddRazorPages();
 builder.Services.AddDbContext<CartoonArchiveDbContext>(options =>
     options.UseSqlite(builder.Configuration.GetConnectionString("Default"))
 );
+
+builder.Services.AddSingleton<ImageStorage>();
 
 // Ensure data directory exists
 Directory.CreateDirectory(Path.Combine(builder.Environment.ContentRootPath, "data"));
@@ -32,5 +36,13 @@ app.UseAuthorization();
 
 app.MapStaticAssets();
 app.MapRazorPages().WithStaticAssets();
+app.MapImageEndpoints();
+
+// Apply any pending migrations
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<CartoonArchiveDbContext>();
+    await db.Database.MigrateAsync();
+}
 
 app.Run();

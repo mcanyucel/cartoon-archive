@@ -35,3 +35,30 @@ They keep the FTS index in sync with `Cartoons.Description`:
 
 * Drops triggers first, then the FTS table. 
 * Won't ever run in production but keeps EF's rollback story clean. 
+
+## `ImageStorage`
+
+It writes bytes to a randomly-named temp file inside `data/images/` while hashing while hashing them in the same pass with `IncrementalHash`. When the write is done, we know the SHA256. It computes the final path as `{sha256}{ext}` - if a file with that name already exists (previous upload of the same bytes), it deletes the temp; otherwise `File.Move` the temp to the final name. It returns the hash. On any exception, it best-efforts t odelete the temp file. 
+
+### Design Notes
+
+* Single pass hash+write via `IncrementalHash`: The alternative is "hash the stream, then re-read to write" - requires a seekable stream (some request bodies aren't) or buffering the whole image in memory (bad for large files). One pass is both simpler and more scalable. 
+* Temp file + rename (atomicity): `File.Move` on the same volume is atomic on both Windows and Linux; readers will never see a partially-written file. Random temp name avoids collisions if two uploads run concurrently.
+* Duplicate detection at the file layer: If `{sha256}{ext}` already exists, we don't overwrite. Cheap idempotency at the storage layer; the DB layer's unique index on `sha256` is a separate safety net at a different level. 
+* Buffer size is 81920: `Stream.CopyToAsync` uses this internally. Matches the tuned default; no reason to pick another number.
+* sealed: As always (free perf and enables trivial devirtualization)
+* No interface: Same reasoning as DbContext: one implementation, no mocking. 
+* GetPath on the same class — everyone who needs the on-disk path (upload response, image serving, thumbnail generation, deletion) goes through this one method. If we ever change the layout (nested subdirs like data/images/ab/cd/{sha}.jpg to avoid one huge folder), we change it in one place.
+* IWebHostEnvironment for the root — consistent with Program.cs's ContentRootPath and doesn't require a bespoke config option. If we later want configurable storage root (env var), we swap   the constructor param.
+* Content-type mapping lives here — one small switch, three MIME types, matches what the DTO accepts. Endpoint should validate the incoming content-type against the same list before calling StoreAsync; the throw in ExtensionFor is a defense-in-depth net, not the primary check.
+
+## Design Notes on CartoonArchive.Api Endpoint 
+
+* `MapGroup("/api/images/")`: Every route under this prefix inherits from the group - `GET, GET /{id}, DELETE /{id}`. Nice for keeping related routes together and for applying common middleware/auth to the whole group in one place.
+* `.DisableAntiforgery()`: .NET 10 enforces antiforgery on form-content endpoints by default. That's the right default for Razor pages posinng cookies-authenticated forms, but this is a raw API endpoint. Once SSO is in plave we will rely on the reverse-proxy's auth headers, not cookies. To keep anti-forgery, we can wire an `X-XSRF-TOKEN` in the frontend later.
+* Order of operations: Store first, then check DB. We have to read the request stream to compute the hash anyways, so we might as well let `ImageStorage` do its full temp-write-and-rename. If the DB check reveals a duplicate, the storage call was a no-op (the file was already on the disk from a previous upload). If it is new, we already have the bytes in place before the row is inserted. There is no window where the row points to a non-existent file.
+* `Results.Conflict(...)` on duplicate: 409 is the HTTP-correct status for 'conflicts with current state'. Body is the existing cartoon so the UI can navigate to it.
+* No race handling: Two simultaneous uploads of the same file would theoretically both pass the existing is null check, and the second `SaveChangesAsync` would fail on the unique index. For a personal archive this is very unlikely; adding a try/catch `DbupdateException` is overhead that pays no rent. If we ever see it, we will add it then.
+* `OpenReadStream()` inside `await using`: `IFromFile.OpenReadStream()` returns a fresh readable stream backed by the multipart body (or temp file if the section is large). We dispose it before touching the db so the stream is not held across the DB call.
+* `Results.Created($"/api/images/{cartoon.Id}, ...)`: 201 with a `Location` header - standard REST. 
+* Handler as a static method taking DI params: .NET automatically resolves them from DI. Static handlers keep the endpoints class from accidentally accumulating state. 
