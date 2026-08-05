@@ -1,19 +1,33 @@
 using CartoonArchive.Api;
+using CartoonArchive.Captioning;
 using CartoonArchive.Data;
 using CartoonArchive.Storage;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.FileProviders;
+using Microsoft.Extensions.Options;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Custom Options
+builder.Services.Configure<CaptionOptions>(builder.Configuration.GetSection("Caption"));
+
 // Add services to the container.
 builder.Services.AddRazorPages();
+builder.Services.AddHttpClient<ICaptionService, OpenAiCaptionService>(
+    (sp, http) =>
+    {
+        var options = sp.GetRequiredService<IOptions<CaptionOptions>>().Value;
+        http.BaseAddress = new Uri(options.BaseUrl);
+        http.Timeout = TimeSpan.FromSeconds(60);
+    }
+);
 
 // Add DbContext
 builder.Services.AddDbContext<CartoonArchiveDbContext>(options =>
     options.UseSqlite(builder.Configuration.GetConnectionString("Default"))
 );
 
+// Custom Services
 builder.Services.AddSingleton<ImageStorage>();
 builder.Services.AddSingleton<ThumbnailGenerator>();
 

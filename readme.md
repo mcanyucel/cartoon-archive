@@ -62,3 +62,12 @@ It writes bytes to a randomly-named temp file inside `data/images/` while hashin
 * `OpenReadStream()` inside `await using`: `IFromFile.OpenReadStream()` returns a fresh readable stream backed by the multipart body (or temp file if the section is large). We dispose it before touching the db so the stream is not held across the DB call.
 * `Results.Created($"/api/images/{cartoon.Id}, ...)`: 201 with a `Location` header - standard REST. 
 * Handler as a static method taking DI params: .NET automatically resolves them from DI. Static handlers keep the endpoints class from accidentally accumulating state. 
+
+## OpenAI Vision Service
+
+* Reads the file into memory as base64. Vision endpoints accept either a public URL or inline base64 data. For a self-hosted app with no public url, inline base64 is the practical choice. Cost: double the request size in transit (base64 is ~1.33x the raw bytes). Fine for images that are already under a few MB after the source resize, a real issue if the originals are 20+ MB. If this bites us in the back, we can always send a shrank version of the original. 
+* Anonymous types + `JsonContent.Create` for the request body: no DTOs needed for the outgoing side. The JSON structure is not reused, so a dedicated class would be a 'dead ceremony'.
+* `JsonElement` for the response: Same reasoning inverted: OpenAI's response schema is broad and we only care about one field (`choices[0].message.content`). Deserializing into a full typed model means writing (and maintaining) types for fields we don't use. 
+* Explicit `!IsSuccessStatusCode` handling instead of `EnsureSuccessStatusCode()`: We want the error body in the exception message. A 401 with "Invalid API key" is way more useful than the default 'response status does not indicate success: 401'.
+* Throws on empty caption: better to fail loudly than store empty descriptions that create silent 'captioned but no content' bugs.
+
