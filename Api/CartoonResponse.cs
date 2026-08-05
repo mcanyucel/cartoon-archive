@@ -8,5 +8,6 @@ public record CartoonResponse(
     string OriginalFileName,
     string Language,
     CartoonStatus Status,
-    DateTimeOffset UploadedAt
+    DateTimeOffset UploadedAt,
+    string ImageUrl
 );

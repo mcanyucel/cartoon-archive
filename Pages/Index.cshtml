@@ -4,5 +4,38 @@
     ViewData["Title"] = "Gallery";
 }
 
-<h1>Gallery</h1>
-<p class="text-muted">No images yet.</p>
+<div class="row mb-4">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">Upload</h5>
+                <form id="upload-form">
+                    <div class="mb-3">
+                        <label for="file" class="form-label">Image</label>
+                        <input type="file" class="form-control" id="file" name="File"
+                               accept="image/jpeg,image/png,image/webp" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="language" class="form-label">Language</label>
+                        <select class="form-select" id="language" name="Language" required>
+                            <option value="tr">Türkçe</option>
+                            <option value="en">English</option>
+                            <option value="de">Deutsch</option>
+                            <option value="fr">Français</option>
+                            <option value="es">Español</option>
+                        </select>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Upload</button>
+                    <span id="upload-status" class="ms-3"></span>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<h2>Gallery</h2>
+<div id="gallery" class="row row-cols-2 row-cols-md-3 row-cols-lg-4 g-3"></div>
+
+@section Scripts {
+    <script src="~/js/gallery.js" asp-append-version="true"></script>
+}

@@ -60,7 +60,7 @@ public sealed class ImageStorage(IWebHostEnvironment env)
     public string GetPath(string sha256, string contentType) =>
         Path.Combine(_imagesDirectory, $"{sha256}{ExtensionFor(contentType)}");
 
-    private static string ExtensionFor(string contentType) =>
+    public static string ExtensionFor(string contentType) =>
         contentType switch
         {
             "image/jpeg" => ".jpg",

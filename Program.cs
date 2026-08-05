@@ -2,6 +2,7 @@ using CartoonArchive.Api;
 using CartoonArchive.Data;
 using CartoonArchive.Storage;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.FileProviders;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -15,8 +16,9 @@ builder.Services.AddDbContext<CartoonArchiveDbContext>(options =>
 
 builder.Services.AddSingleton<ImageStorage>();
 
-// Ensure data directory exists
+// Ensure required directories exist
 Directory.CreateDirectory(Path.Combine(builder.Environment.ContentRootPath, "data"));
+Directory.CreateDirectory(Path.Combine(builder.Environment.ContentRootPath, "data", "images"));
 
 var app = builder.Build();
 
@@ -29,6 +31,16 @@ if (!app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+
+app.UseStaticFiles(
+    new StaticFileOptions
+    {
+        FileProvider = new PhysicalFileProvider(
+            Path.Combine(app.Environment.ContentRootPath, "data", "images")
+        ),
+        RequestPath = "/images",
+    }
+);
 
 app.UseRouting();
 

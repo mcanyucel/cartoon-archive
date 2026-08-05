@@ -25,6 +25,7 @@ public static class ImageEndpoints
         var group = routes.MapGroup("/api/images");
 
         group.MapPost("/", HandleUpload).DisableAntiforgery();
+        group.MapGet("/", HandleList);
 
         return routes;
     }
@@ -59,7 +60,10 @@ public static class ImageEndpoints
             sha256 = await storage.StoreAsync(stream, request.File.ContentType, ct);
         }
 
-        var existing = await db.Cartoons.FirstOrDefaultAsync(c => c.Sha256 == sha256, ct);
+        var existing = await db
+            .Cartoons.AsNoTracking()
+            .FirstOrDefaultAsync(c => c.Sha256 == sha256, ct);
+
         if (existing is not null)
         {
             return Results.Conflict(ToResponse(existing));
@@ -81,6 +85,25 @@ public static class ImageEndpoints
         return Results.Created($"/api/images/{cartoon.Id}", ToResponse(cartoon));
     }
 
+    private static async Task<IResult> HandleList(CartoonArchiveDbContext db, CancellationToken ct)
+    {
+        var cartoons = await db
+            .Cartoons.OrderByDescending(c => c.Id) // SQLite cannot sort by DateTimeOffset. Id should be auto-incrementing anyways
+            .Take(200)
+            .AsNoTracking()
+            .ToListAsync(ct);
+
+        return Results.Ok(cartoons.Select(ToResponse));
+    }
+
     private static CartoonResponse ToResponse(Cartoon c) =>
-        new(c.Id, c.Sha256, c.OriginalFileName, c.Language, c.Status, c.UploadedAt);
+        new(
+            Id: c.Id,
+            Sha256: c.Sha256,
+            OriginalFileName: c.OriginalFileName,
+            Language: c.Language,
+            Status: c.Status,
+            UploadedAt: c.UploadedAt,
+            ImageUrl: $"/images/{c.Sha256}{ImageStorage.ExtensionFor(c.ContentType)}"
+        );
 }
