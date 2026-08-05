@@ -32,7 +32,7 @@ function renderGallery(cartoons) {
       (c) => `
         <div class="col">
             <div class="card h-100">
-                <img src="${c.imageUrl}" class="card-img-top" alt="${escapeHtml(c.originalFileName)}">
+                <img src="${c.thumbnailUrl}" class="card-img-top" alt="${escapeHtml(c.originalFileName)}">
                 <div class="card-body p-2">
                     <p class="card-text small mb-0 text-truncate" title="${escapeHtml(c.originalFileName)}">
                         ${escapeHtml(c.originalFileName)}

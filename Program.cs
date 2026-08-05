@@ -15,10 +15,12 @@ builder.Services.AddDbContext<CartoonArchiveDbContext>(options =>
 );
 
 builder.Services.AddSingleton<ImageStorage>();
+builder.Services.AddSingleton<ThumbnailGenerator>();
 
 // Ensure required directories exist
 Directory.CreateDirectory(Path.Combine(builder.Environment.ContentRootPath, "data"));
 Directory.CreateDirectory(Path.Combine(builder.Environment.ContentRootPath, "data", "images"));
+Directory.CreateDirectory(Path.Combine(builder.Environment.ContentRootPath, "data", "thumbnails"));
 
 var app = builder.Build();
 
@@ -39,6 +41,15 @@ app.UseStaticFiles(
             Path.Combine(app.Environment.ContentRootPath, "data", "images")
         ),
         RequestPath = "/images",
+    }
+);
+app.UseStaticFiles(
+    new StaticFileOptions
+    {
+        FileProvider = new PhysicalFileProvider(
+            Path.Combine(app.Environment.ContentRootPath, "data", "thumbnails")
+        ),
+        RequestPath = "/thumbnails",
     }
 );
 

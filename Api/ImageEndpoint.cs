@@ -33,6 +33,7 @@ public static class ImageEndpoints
     private static async Task<IResult> HandleUpload(
         [FromForm] UploadImageRequest request,
         ImageStorage storage,
+        ThumbnailGenerator thumbnailGenerator,
         CartoonArchiveDbContext db,
         CancellationToken ct
     )
@@ -59,6 +60,9 @@ public static class ImageEndpoints
         {
             sha256 = await storage.StoreAsync(stream, request.File.ContentType, ct);
         }
+
+        var sourcePath = storage.GetPath(sha256, request.File.ContentType);
+        await thumbnailGenerator.GenerateAsync(sha256, sourcePath, ct);
 
         var existing = await db
             .Cartoons.AsNoTracking()
@@ -104,6 +108,7 @@ public static class ImageEndpoints
             Language: c.Language,
             Status: c.Status,
             UploadedAt: c.UploadedAt,
-            ImageUrl: $"/images/{c.Sha256}{ImageStorage.ExtensionFor(c.ContentType)}"
+            ImageUrl: $"/images/{c.Sha256}{ImageStorage.ExtensionFor(c.ContentType)}",
+            ThumbnailUrl: $"/thumbnails/{c.Sha256}.webp"
         );
 }

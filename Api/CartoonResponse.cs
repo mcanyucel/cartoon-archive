@@ -9,5 +9,6 @@ public record CartoonResponse(
     string Language,
     CartoonStatus Status,
     DateTimeOffset UploadedAt,
-    string ImageUrl
+    string ImageUrl,
+    string ThumbnailUrl
 );
