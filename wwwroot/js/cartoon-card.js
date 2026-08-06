@@ -3,6 +3,8 @@ window.CartoonCard = (function () {
   const STATUS_READY = 1;
   const STATUS_FAILED = 2;
 
+  const cache = new Map();
+
   function escapeHtml(str) {
     return String(str)
       .replace(/&/g, "&amp;")
@@ -49,6 +51,7 @@ window.CartoonCard = (function () {
   }
 
   function renderCard(c) {
+    cache.set(c.id, c);
     const classes = ["card", "h-100"];
     if (c.status === STATUS_PENDING) classes.push("opacity-75");
     if (c.status === STATUS_FAILED) classes.push("border-danger");
@@ -56,7 +59,9 @@ window.CartoonCard = (function () {
     return `
         <div class="masonry-item" data-id="${c.id}">
             <div class="${classes.join(" ")}">
-                <img src="${c.thumbnailUrl}" class="card-img-top" alt="${escapeHtml(c.description ?? "")}">
+                <img src="${c.thumbnailUrl}" class="card-img-top"
+                     data-action="open" style="cursor: pointer"
+                     alt="${escapeHtml(c.description ?? "")}">
                 <div class="card-body p-2">
                     <p class="mb-1">
                         <span class="badge bg-secondary">${escapeHtml(c.language)}</span>
@@ -94,6 +99,45 @@ window.CartoonCard = (function () {
     });
   }
 
+  function openLightbox(c) {
+    const modal = document.getElementById("cartoon-lightbox");
+    if (!modal || typeof bootstrap === "undefined") return;
+
+    modal.querySelector("#cartoon-lightbox-image").src = c.imageUrl;
+    modal.querySelector("#cartoon-lightbox-image").alt = c.description ?? "";
+    modal.querySelector("#cartoon-lightbox-title").textContent = c.originalFileName ?? "";
+    modal.querySelector("#cartoon-lightbox-language").textContent = c.language ?? "";
+
+    const descEl = modal.querySelector("#cartoon-lightbox-description");
+    if (c.status === STATUS_PENDING) {
+      descEl.textContent = "Captioning…";
+      descEl.className = "small text-muted fst-italic mb-2";
+    } else if (c.status === STATUS_FAILED) {
+      descEl.textContent = c.errorMessage ?? "Captioning failed.";
+      descEl.className = "small text-danger mb-2";
+    } else {
+      descEl.textContent = c.description ?? "";
+      descEl.className = "small mb-2";
+    }
+
+    modal.querySelector("#cartoon-lightbox-uploaded").textContent =
+      `Uploaded ${formatUploadedAt(c.uploadedAt)}`;
+
+    bootstrap.Modal.getOrCreateInstance(modal).show();
+  }
+
+  function attachLightboxHandler(container) {
+    container.addEventListener("click", (event) => {
+      const img = event.target.closest('img[data-action="open"]');
+      if (!img) return;
+      const item = img.closest(".masonry-item");
+      const id = Number(item?.dataset.id);
+      const c = cache.get(id);
+      if (!c) return;
+      openLightbox(c);
+    });
+  }
+
   return {
     STATUS_PENDING,
     STATUS_READY,
@@ -103,5 +147,6 @@ window.CartoonCard = (function () {
     renderBody,
     renderCard,
     attachRetryHandler,
+    attachLightboxHandler,
   };
 })();

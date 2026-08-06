@@ -39,5 +39,6 @@ CartoonCard.attachRetryHandler(results, {
   onSuccess: loadResults,
   onError: (msg) => setResultsStatus(msg, "text-danger"),
 });
+CartoonCard.attachLightboxHandler(results);
 
 loadResults();

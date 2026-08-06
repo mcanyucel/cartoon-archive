@@ -47,5 +47,6 @@ CartoonCard.attachRetryHandler(gallery, {
   onSuccess: loadGallery,
   onError: (msg) => setGalleryStatus(msg, "text-danger"),
 });
+CartoonCard.attachLightboxHandler(gallery);
 
 loadGallery();
