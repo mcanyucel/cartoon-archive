@@ -40,5 +40,8 @@ CartoonCard.attachRetryHandler(results, {
   onError: (msg) => setResultsStatus(msg, "text-danger"),
 });
 CartoonCard.attachLightboxHandler(results, { onAfterDelete: loadResults });
+CartoonCard.attachShareHandler(results, {
+  onMessage: (text, className) => setResultsStatus(text, className),
+});
 
 loadResults();

@@ -7,6 +7,7 @@ public sealed class CartoonArchiveDbContext(DbContextOptions<CartoonArchiveDbCon
     : DbContext(options)
 {
     public DbSet<Cartoon> Cartoons => Set<Cartoon>();
+    public DbSet<ShareToken> ShareTokens => Set<ShareToken>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -18,5 +19,15 @@ public sealed class CartoonArchiveDbContext(DbContextOptions<CartoonArchiveDbCon
         cartoon.Property(c => c.Sha256).HasMaxLength(64);
         cartoon.Property(c => c.Language).HasMaxLength(16);
         cartoon.Property(c => c.ContentType).HasMaxLength(64);
+
+        var share = modelBuilder.Entity<ShareToken>();
+        share.HasKey(s => s.Token);
+        share.Property(s => s.Token).HasMaxLength(64);
+        share.HasIndex(s => s.ExpiresAt);
+        share
+            .HasOne(s => s.Cartoon)
+            .WithMany()
+            .HasForeignKey(s => s.CartoonId)
+            .OnDelete(DeleteBehavior.Cascade);
     }
 }

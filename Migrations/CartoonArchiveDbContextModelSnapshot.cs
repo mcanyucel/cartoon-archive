@@ -69,6 +69,38 @@ namespace CartoonArchive.Migrations
 
                     b.ToTable("Cartoons");
                 });
+
+            modelBuilder.Entity("CartoonArchive.Models.ShareToken", b =>
+                {
+                    b.Property<string>("Token")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("CartoonId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTimeOffset>("ExpiresAt")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Token");
+
+                    b.HasIndex("CartoonId");
+
+                    b.HasIndex("ExpiresAt");
+
+                    b.ToTable("ShareTokens");
+                });
+
+            modelBuilder.Entity("CartoonArchive.Models.ShareToken", b =>
+                {
+                    b.HasOne("CartoonArchive.Models.Cartoon", "Cartoon")
+                        .WithMany()
+                        .HasForeignKey("CartoonId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Cartoon");
+                });
 #pragma warning restore 612, 618
         }
     }

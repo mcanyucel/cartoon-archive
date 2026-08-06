@@ -137,6 +137,84 @@
   Cheap vision tier: ~$0.001 per image order of magnitude. A collection of 1000 cartoons ≈ $1 total.
   Re-check pricing at implementation time against whichever model wins the benchmark.
 
+  ## Auth Mode
+
+  The app does not implement its own login, session store, or password hashing. Two supported
+  deployment modes selected via `Auth:Mode` (env: `Auth__Mode`):
+
+  - **`ReverseProxy`** (recommended for internet-facing deployments): every gated request must
+    carry an authenticated user header (default `X-Remote-User`, configurable via
+    `Auth:HeaderName`). A reverse proxy (Authelia, Caddy `basicauth`, nginx `auth_basic`,
+    oauth2-proxy) authenticates the user and injects the header. Missing header → 401. The
+    proxy is responsible for stripping these headers from incoming client requests; the app
+    should bind to localhost or a docker-internal network so it can't be reached except
+    through the proxy.
+  - **`None`** (default in appsettings — appropriate only for LAN/localhost): no gating, every
+    endpoint open. Convenient for development and trusted-network deployments; README calls
+    this out as unsafe for internet exposure.
+
+  Wired as a single middleware ahead of endpoints. Path prefixes that must remain reachable
+  regardless of mode are allowlisted: `/images/*`, `/thumbnails/*`, `/s/*` (share links), plus
+  static assets (`/css`, `/js`, `/lib`). Anyone who does not want SSO but still wants a
+  password prompt can put Caddy `basicauth` (or nginx `auth_basic`) in front — same
+  `ReverseProxy` mode, header supplied by the proxy.
+
+  ## Time-Limited Share Links
+
+  Every share is temporary. No permanent, un-revocable image URLs on the internet — this is a
+  legal/copyright/privacy safety property, not a cryptographic one. A user opens the lightbox,
+  clicks Share, gets a URL that expires after ~1 hour.
+
+  ### Endpoints
+
+  - `POST /api/images/{id}/share` (auth-gated when `Auth:Mode = ReverseProxy`). Allowed only
+    for `Ready` cartoons — 409 on Pending/Failed since there is no description to build a hint
+    from. Creates a token, extracts the hint from the description, returns
+    `{ token, expiresAt, url }` where `url` embeds the hint as a query string.
+  - `GET /s/{token}` on a valid token — inline-serves the image bytes via `Results.File`.
+    Response headers: `Cache-Control: no-store, must-revalidate` (so browsers can't retain
+    the image past expiry), `Content-Disposition: inline; filename="cartoon.{ext}"` (generic
+    save name). Never references the underlying `/images/{sha256}.ext` URL — DevTools sees
+    only `/s/{token}`.
+  - `GET /s/{token}` on expired/missing — 410 Gone, renders a minimal HTML page:
+    "Link expired. Ask the sender to reshare — hint: 'a man walks into a bar…'". Hint text
+    comes from the `k=` query param on the URL, not the database (see below).
+
+  ### Keyword Hint in the URL, Not the DB
+
+  The share URL looks like `https://host/s/{token}?k=a+man+walks+into+a+bar`. The hint is the
+  first 5–7 consecutive words from the description, URL-encoded. Consequences:
+
+  - `ShareTokens` stores nothing about the hint — schema is only `Token`, `CartoonId`,
+    `ExpiresAt`.
+  - Hint survives cartoon deletion, not just token expiry. The URL is self-contained.
+  - Nothing extra to garbage-collect for the hint.
+  - A recipient who already saw the image once uses the hint to identify which cartoon to
+    ask the sender for. Someone who finds the link cold sees a hint but no image — low risk,
+    since the intended recipient sees the same content anyway.
+
+  ### Data Model
+
+      ShareTokens {
+          Token      TEXT PK    -- 32-char cryptographically random hex
+          CartoonId  INT FK -> Cartoons(Id) ON DELETE CASCADE
+          ExpiresAt  DATETIMEOFFSET
+      }
+
+  ### Cleanup
+
+  A `BackgroundService` sweeps every ~10 minutes deleting rows `WHERE ExpiresAt < now`. No
+  opportunistic-on-lookup cleanup: an expired read just returns 410, the sweep catches it
+  later. `ON DELETE CASCADE` on the FK keeps the table clean when a cartoon is deleted
+  directly.
+
+  ### UI
+
+  A Share button in the lightbox footer. Clicking it POSTs to `/api/images/{id}/share`,
+  writes the returned URL to the clipboard via `navigator.clipboard.writeText`, and shows a
+  brief inline confirmation ("Link copied — expires in 1 hour"). No new page on the sender
+  side; sharing happens entirely from the modal.
+
   ## Reference
 
   - Inspired by: https://github.com/neonwatty/meme-search

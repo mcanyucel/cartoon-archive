@@ -78,3 +78,10 @@ It writes bytes to a randomly-named temp file inside `data/images/` while hashin
 * `WHERE CartoonsFts MATCH ...`: The left side has to be the FTS table name (or its alias in the `FROM`). We used the full name here for readability.
 * `Select c.*`: `FromSql` requires columns match the entity mapping. `c.*` on the Cartoons table gives us exactly what the `Cartoon` entity expects.
 
+## Temporary Sharing interface
+
+* `GenerateToken` uses `RandomNumberGenerator.GetBytes(16)`, i.e. 128 bits of entropy, that results in 32 hex chars. Pretty unguessable.
+* `HtmlEncoder.Default.Encode(hint)`: The hint comes from a URL query param, so an attacher could put `<scipt>` in it. Encoding it neutralizes these attacks. Razor does this automatically for `@Model.X` in Razor pages, but we are building the HTML by hand, so we call explicitly.
+* `Results.File(path, contentType)`: Streams the file bytes with the right content type. Headers we set beforehand are preserved.
+* Double-checking the file: If the token exists but the underlying file is deleted, we treat it as expired, too. Better than returning 500.
+* `Results.Content(...,410)`: 410 Gone is the semantically correct status for "this used to exist and is intentionally no longer available." Search engines will drop the URL from indexes on 410, unlike 404.

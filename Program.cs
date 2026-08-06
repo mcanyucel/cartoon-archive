@@ -1,6 +1,8 @@
 using CartoonArchive.Api;
+using CartoonArchive.Auth;
 using CartoonArchive.Captioning;
 using CartoonArchive.Data;
+using CartoonArchive.Sharing;
 using CartoonArchive.Storage;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.FileProviders;
@@ -10,6 +12,8 @@ var builder = WebApplication.CreateBuilder(args);
 
 // Custom Options
 builder.Services.Configure<CaptionOptions>(builder.Configuration.GetSection("Caption"));
+builder.Services.Configure<AuthOptions>(builder.Configuration.GetSection(AuthOptions.SectionName));
+builder.Services.Configure<ShareOptions>(builder.Configuration.GetSection(ShareOptions.SectionName));
 
 // Add services to the container.
 builder.Services.AddRazorPages();
@@ -31,6 +35,7 @@ builder.Services.AddDbContext<CartoonArchiveDbContext>(options =>
 builder.Services.AddSingleton<ImageStorage>();
 builder.Services.AddSingleton<ThumbnailGenerator>();
 builder.Services.AddHostedService<CaptionWorker>();
+builder.Services.AddHostedService<ShareCleanupWorker>();
 
 // Ensure required directories exist
 Directory.CreateDirectory(Path.Combine(builder.Environment.ContentRootPath, "data"));
@@ -48,6 +53,8 @@ if (!app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+
+app.UseMiddleware<ReverseProxyAuthMiddleware>();
 
 app.UseStaticFiles(
     new StaticFileOptions
@@ -75,6 +82,7 @@ app.UseAuthorization();
 app.MapStaticAssets();
 app.MapRazorPages().WithStaticAssets();
 app.MapImageEndpoints();
+app.MapShareEndpoints();
 
 // Apply any pending migrations
 using (var scope = app.Services.CreateScope())

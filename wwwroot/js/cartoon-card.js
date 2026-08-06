@@ -64,14 +64,57 @@ window.CartoonCard = (function () {
                      data-action="open" style="cursor: pointer"
                      alt="${escapeHtml(c.description ?? "")}">
                 <div class="card-body p-2">
-                    <p class="mb-1">
+                    <div class="d-flex justify-content-between align-items-center mb-1">
                         <span class="badge bg-secondary">${escapeHtml(c.language)}</span>
-                    </p>
+                        ${c.status === STATUS_READY
+                          ? `<button type="button" class="btn btn-link btn-sm p-0" data-action="share">Share</button>`
+                          : ""}
+                    </div>
                     ${renderBody(c)}
                 </div>
             </div>
         </div>
     `;
+  }
+
+  async function performShare(id, { button, onMessage }) {
+    if (onMessage) onMessage("", "");
+    if (button) button.disabled = true;
+    try {
+      const response = await fetch(`/api/images/${id}/share`, { method: "POST" });
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        if (onMessage)
+          onMessage(`Share failed: ${err.error ?? response.statusText}`, "text-danger");
+        return;
+      }
+      const { url, expiresAt } = await response.json();
+      try {
+        await navigator.clipboard.writeText(url);
+        const mins = Math.max(
+          1,
+          Math.round((new Date(expiresAt) - new Date()) / 60000)
+        );
+        if (onMessage) onMessage(`Link copied — expires in ${mins} min`, "text-success");
+      } catch {
+        if (onMessage) onMessage(`Copy failed. URL: ${url}`, "text-muted");
+      }
+    } catch (e) {
+      if (onMessage) onMessage(`Share failed: ${e.message}`, "text-danger");
+    } finally {
+      if (button) button.disabled = false;
+    }
+  }
+
+  function attachShareHandler(container, { onMessage } = {}) {
+    container.addEventListener("click", async (event) => {
+      const button = event.target.closest('button[data-action="share"]');
+      if (!button) return;
+      const item = button.closest(".masonry-item");
+      const id = Number(item?.dataset.id);
+      if (!id) return;
+      await performShare(id, { button, onMessage });
+    });
   }
 
   function attachRetryHandler(container, { onSuccess, onError } = {}) {
@@ -116,7 +159,12 @@ window.CartoonCard = (function () {
 
     currentCartoon = c;
     const errEl = modal.querySelector("#cartoon-lightbox-error");
-    if (errEl) errEl.textContent = "";
+    if (errEl) {
+      errEl.textContent = "";
+      errEl.className = "small me-auto";
+    }
+    const shareBtn = modal.querySelector("#cartoon-lightbox-share");
+    if (shareBtn) shareBtn.disabled = c.status !== STATUS_READY;
     setConfirmMode(modal, false);
 
     modal.querySelector("#cartoon-lightbox-image").src = c.imageUrl;
@@ -160,10 +208,25 @@ window.CartoonCard = (function () {
     const deleteBtn = modal.querySelector("#cartoon-lightbox-delete");
     const confirmBtn = modal.querySelector("#cartoon-lightbox-delete-confirm");
     const cancelBtn = modal.querySelector("#cartoon-lightbox-delete-cancel");
+    const shareBtn = modal.querySelector("#cartoon-lightbox-share");
     const errEl = modal.querySelector("#cartoon-lightbox-error");
 
+    function setMessage(text, className) {
+      if (!errEl) return;
+      errEl.textContent = text;
+      errEl.className = `small me-auto ${className}`;
+    }
+
+    shareBtn?.addEventListener("click", async () => {
+      if (!currentCartoon) return;
+      await performShare(currentCartoon.id, {
+        button: shareBtn,
+        onMessage: setMessage,
+      });
+    });
+
     deleteBtn?.addEventListener("click", () => {
-      if (errEl) errEl.textContent = "";
+      setMessage("", "");
       setConfirmMode(modal, true);
     });
 
@@ -174,7 +237,7 @@ window.CartoonCard = (function () {
     confirmBtn?.addEventListener("click", async () => {
       if (!currentCartoon) return;
       const c = currentCartoon;
-      if (errEl) errEl.textContent = "";
+      setMessage("", "");
       confirmBtn.disabled = true;
       if (cancelBtn) cancelBtn.disabled = true;
 
@@ -187,12 +250,11 @@ window.CartoonCard = (function () {
           if (onAfterDelete) await onAfterDelete();
         } else {
           const err = await response.json().catch(() => ({}));
-          if (errEl)
-            errEl.textContent = `Delete failed: ${err.error ?? response.statusText}`;
+          setMessage(`Delete failed: ${err.error ?? response.statusText}`, "text-danger");
           setConfirmMode(modal, false);
         }
       } catch (e) {
-        if (errEl) errEl.textContent = `Delete failed: ${e.message}`;
+        setMessage(`Delete failed: ${e.message}`, "text-danger");
         setConfirmMode(modal, false);
       } finally {
         confirmBtn.disabled = false;
@@ -211,5 +273,6 @@ window.CartoonCard = (function () {
     renderCard,
     attachRetryHandler,
     attachLightboxHandler,
+    attachShareHandler,
   };
 })();
