@@ -71,3 +71,10 @@ It writes bytes to a randomly-named temp file inside `data/images/` while hashin
 * Explicit `!IsSuccessStatusCode` handling instead of `EnsureSuccessStatusCode()`: We want the error body in the exception message. A 401 with "Invalid API key" is way more useful than the default 'response status does not indicate success: 401'.
 * Throws on empty caption: better to fail loudly than store empty descriptions that create silent 'captioned but no content' bugs.
 
+## Handling FTS5 Search
+
+* `FromSql($"...")`: The `$` is important. EF's `FromSql(FormattableString)` extracts `{match}` as a bound parameter (like `@p0`), even  though it looks like string interpolation. If we use `FromSqlRaw` with `$...` we lose that safety and open ourselves to injection. Rule of thumb: `FromSql` for interpolated, `FromSqlRaw` for hand-built strings with explicit params.
+* `ORDER BY rank`: FTS5 exposes `rank` as a hidden column on virtual tables. It's the BM25 score, and lower is better (default weighing is negative). No `LIMIT` isn't strictly needed but is cheap insurance.
+* `WHERE CartoonsFts MATCH ...`: The left side has to be the FTS table name (or its alias in the `FROM`). We used the full name here for readability.
+* `Select c.*`: `FromSql` requires columns match the entity mapping. `c.*` on the Cartoons table gives us exactly what the `Cartoon` entity expects.
+

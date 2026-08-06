@@ -99,7 +99,6 @@ public static class ImageEndpoints
         return Results.Ok(cartoons.Select(ToResponse));
     }
 
-    // Stub search: LIKE over description. Will be replaced by FTS5.
     private static async Task<IResult> HandleSearch(
         [FromQuery] string? q,
         CartoonArchiveDbContext db,
@@ -110,17 +109,41 @@ public static class ImageEndpoints
         if (string.IsNullOrEmpty(q))
             return Results.Ok(Array.Empty<CartoonResponse>());
 
-        var pattern = $"%{q}%";
+        var match = BuildFtsMatch(q);
+        if (match.Length == 0)
+            return Results.Ok(Array.Empty<CartoonResponse>());
+
         var cartoons = await db
-            .Cartoons.Where(c =>
-                c.Description != null && EF.Functions.Like(c.Description, pattern)
+            .Cartoons.FromSql(
+                $"""
+                SELECT c.*
+                FROM Cartoons c
+                JOIN CartoonsFts f ON f.rowid = c.Id
+                WHERE CartoonsFts MATCH {match}
+                ORDER BY rank
+                LIMIT 200
+                """
             )
-            .OrderByDescending(c => c.Id)
-            .Take(200)
             .AsNoTracking()
             .ToListAsync(ct);
 
         return Results.Ok(cartoons.Select(ToResponse));
+    }
+
+    /// <summary>
+    /// Turn user input into a safe FTS5 MATCH expression:
+    ///     input: batman robin
+    ///     output: "batman" "robin" (implicit AND; each token is a literal phrase)
+    /// Quoting each token neutralizes FTS5 syntax chars (":", "()", operator words, etc.)
+    /// </summary>
+    private static string BuildFtsMatch(string q)
+    {
+        var tokens = q.Split(new[] { ' ', '\t', '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries)
+            .Select(t => t.Replace("\"", "")) // double-quote is the only char we can't escape inside a phrase
+            .Where(t => t.Length > 0)
+            .Select(t => $"\"{t}\"");
+
+        return string.Join(" ", tokens);
     }
 
     private static async Task<IResult> HandleRetry(
