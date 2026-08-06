@@ -10,5 +10,7 @@ public record CartoonResponse(
     CartoonStatus Status,
     DateTimeOffset UploadedAt,
     string ImageUrl,
-    string ThumbnailUrl
+    string ThumbnailUrl,
+    string? Description,
+    string? ErrorMessage
 );

@@ -1,0 +1,38 @@
+@page
+@model UploadModel
+@{
+    ViewData["Title"] = "Upload";
+}
+
+<div class="row mb-4">
+    <div class="col-md-6 mx-auto">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">Upload</h5>
+                <form id="upload-form">
+                    <div class="mb-3">
+                        <label for="file" class="form-label">Image</label>
+                        <input type="file" class="form-control" id="file" name="File"
+                               accept="image/jpeg,image/png,image/webp" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="language" class="form-label">Language</label>
+                        <select class="form-select" id="language" name="Language" required>
+                            <option value="tr">Türkçe</option>
+                            <option value="en">English</option>
+                            <option value="de">Deutsch</option>
+                            <option value="fr">Français</option>
+                            <option value="es">Español</option>
+                        </select>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Upload</button>
+                    <span id="upload-status" class="ms-3"></span>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="~/js/upload.js" asp-append-version="true"></script>
+}

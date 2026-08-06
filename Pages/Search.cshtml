@@ -1,0 +1,18 @@
+@page
+@model SearchModel
+@{
+    ViewData["Title"] = "Search";
+}
+
+<h2>Search</h2>
+@if (!string.IsNullOrWhiteSpace(Model.Query))
+{
+    <p class="text-muted">Results for &ldquo;@Model.Query&rdquo;</p>
+}
+<div id="results-status" class="small mb-2"></div>
+<div id="search-results" class="masonry-gallery"></div>
+
+@section Scripts {
+    <script src="~/js/cartoon-card.js" asp-append-version="true"></script>
+    <script src="~/js/search.js" asp-append-version="true"></script>
+}

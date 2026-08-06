@@ -1,9 +1,6 @@
-using System.Net.Mime;
-using System.Runtime.Intrinsics.Arm;
 using CartoonArchive.Data;
 using CartoonArchive.Models;
 using CartoonArchive.Storage;
-using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -26,6 +23,8 @@ public static class ImageEndpoints
 
         group.MapPost("/", HandleUpload).DisableAntiforgery();
         group.MapGet("/", HandleList);
+        group.MapGet("/search", HandleSearch);
+        group.MapPost("/{id:int}/retry", HandleRetry);
 
         return routes;
     }
@@ -100,6 +99,49 @@ public static class ImageEndpoints
         return Results.Ok(cartoons.Select(ToResponse));
     }
 
+    // Stub search: LIKE over description. Will be replaced by FTS5.
+    private static async Task<IResult> HandleSearch(
+        [FromQuery] string? q,
+        CartoonArchiveDbContext db,
+        CancellationToken ct
+    )
+    {
+        q = q?.Trim();
+        if (string.IsNullOrEmpty(q))
+            return Results.Ok(Array.Empty<CartoonResponse>());
+
+        var pattern = $"%{q}%";
+        var cartoons = await db
+            .Cartoons.Where(c =>
+                c.Description != null && EF.Functions.Like(c.Description, pattern)
+            )
+            .OrderByDescending(c => c.Id)
+            .Take(200)
+            .AsNoTracking()
+            .ToListAsync(ct);
+
+        return Results.Ok(cartoons.Select(ToResponse));
+    }
+
+    private static async Task<IResult> HandleRetry(
+        int id,
+        CartoonArchiveDbContext db,
+        CancellationToken ct
+    )
+    {
+        var cartoon = await db.Cartoons.FirstOrDefaultAsync(c => c.Id == id, ct);
+        if (cartoon is null)
+            return Results.NotFound();
+        if (cartoon.Status != CartoonStatus.Failed)
+            return Results.Conflict(new { error = "Only failed cartoons can be retried." });
+
+        cartoon.Status = CartoonStatus.Pending;
+        cartoon.ErrorMessage = null;
+        await db.SaveChangesAsync(ct);
+
+        return Results.Ok(ToResponse(cartoon));
+    }
+
     private static CartoonResponse ToResponse(Cartoon c) =>
         new(
             Id: c.Id,
@@ -109,6 +151,8 @@ public static class ImageEndpoints
             Status: c.Status,
             UploadedAt: c.UploadedAt,
             ImageUrl: $"/images/{c.Sha256}{ImageStorage.ExtensionFor(c.ContentType)}",
-            ThumbnailUrl: $"/thumbnails/{c.Sha256}.webp"
+            ThumbnailUrl: $"/thumbnails/{c.Sha256}.webp",
+            Description: c.Description,
+            ErrorMessage: c.ErrorMessage
         );
 }
