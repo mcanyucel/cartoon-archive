@@ -83,12 +83,29 @@ public sealed class CaptionWorker(IServiceProvider services, ILogger<CaptionWork
         {
             throw;
         }
+        catch (DbUpdateConcurrencyException)
+        {
+            logger.LogInformation(
+                "Cartoon {Id} was deleted while being captioned; skipping save.",
+                pending.Id
+            );
+        }
         catch (Exception ex)
         {
             logger.LogError(ex, "Failed to caption cartoon {Id}", pending.Id);
             pending.Status = CartoonStatus.Failed;
             pending.ErrorMessage = ex.Message;
-            await db.SaveChangesAsync(ct);
+            try
+            {
+                await db.SaveChangesAsync(ct);
+            }
+            catch (DbUpdateConcurrencyException)
+            {
+                logger.LogInformation(
+                    "Cartoon {Id} was deleted before failure state could be saved.",
+                    pending.Id
+                );
+            }
         }
 
         return true;
