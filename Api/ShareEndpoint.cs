@@ -144,9 +144,13 @@ public static class ShareEndpoints
                 <style>
                     body { font-family: system-ui, -apple-system, sans-serif;
                            max-width: 520px; margin: 4em auto; padding: 0 1em;
-                           color: #333; line-height: 1.5; }
+                           color: #333; background: #fff; line-height: 1.5; }
                     h1 { font-size: 1.4em; margin-bottom: 0.5em; }
                     .hint { font-style: italic; color: #666; margin-top: 1.5em; }
+                    @media (prefers-color-scheme: dark) {
+                        body { color: #e0e0e0; background: #1a1a1a; }
+                        .hint { color: #999; }
+                    }
                 </style>
             </head>
             <body>

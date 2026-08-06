@@ -10,7 +10,7 @@ function setStatus(text, className) {
 }
 
 if (dropZone && fileInput) {
-  const HIGHLIGHT = ["border-primary", "bg-light"];
+  const HIGHLIGHT = ["border-primary", "bg-body-tertiary"];
 
   ["dragenter", "dragover"].forEach((ev) =>
     dropZone.addEventListener(ev, (e) => {
