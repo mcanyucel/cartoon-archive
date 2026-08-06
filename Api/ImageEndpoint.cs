@@ -34,19 +34,11 @@ public static class ImageEndpoints
         [FromForm] UploadImageRequest request,
         ImageStorage storage,
         ThumbnailGenerator thumbnailGenerator,
+        UrlImageFetcher urlFetcher,
         CartoonArchiveDbContext db,
         CancellationToken ct
     )
     {
-        if (request.File.Length == 0)
-            return Results.BadRequest(new { error = "File is empty." });
-        if (!AllowedContentTypes.Contains(request.File.ContentType))
-        {
-            return Results.BadRequest(
-                new { error = $"Unsopported content type '{request.File.ContentType}." }
-            );
-        }
-
         var language = request.Language?.Trim();
         if (string.IsNullOrEmpty(language) || language.Length > 16)
         {
@@ -55,29 +47,66 @@ public static class ImageEndpoints
             );
         }
 
-        string sha256;
-        await using (var stream = request.File.OpenReadStream())
+        // Either File or Url must be provided
+        var hasFile = request.File is { Length: > 0 };
+        var hasUrl = !string.IsNullOrWhiteSpace(request.Url);
+
+        if (hasFile == hasUrl)
+            return Results.BadRequest(new { error = "Provide either a file or a URL." });
+
+        Stream content;
+        string contentType;
+        string originalFileName;
+
+        if (hasFile)
         {
-            sha256 = await storage.StoreAsync(stream, request.File.ContentType, ct);
+            var f = request.File!;
+            if (!AllowedContentTypes.Contains(f.ContentType))
+                return Results.BadRequest(
+                    new { error = $"Unsupported content type '{f.ContentType}'." }
+                );
+            content = f.OpenReadStream();
+            contentType = f.ContentType;
+            originalFileName = f.FileName;
+        }
+        else
+        {
+            try
+            {
+                var (stream, ct2) = await urlFetcher.FetchAsync(request.Url!, ct);
+                content = stream;
+                contentType = ct2;
+                // use the last URL segment as the 'filename' - cheap and good enough
+                originalFileName = Path.GetFileName(new Uri(request.Url!).LocalPath);
+                if (string.IsNullOrWhiteSpace(originalFileName))
+                    originalFileName = "downloaded";
+            }
+            catch (UrlFetchException ex)
+            {
+                return Results.BadRequest(new { error = ex.Message });
+            }
         }
 
-        var sourcePath = storage.GetPath(sha256, request.File.ContentType);
+        string sha256;
+        await using (content)
+        {
+            sha256 = await storage.StoreAsync(content, contentType, ct);
+        }
+
+        var sourcePath = storage.GetPath(sha256, contentType);
         await thumbnailGenerator.GenerateAsync(sha256, sourcePath, ct);
 
         var existing = await db
             .Cartoons.AsNoTracking()
             .FirstOrDefaultAsync(c => c.Sha256 == sha256, ct);
-
         if (existing is not null)
-        {
             return Results.Conflict(ToResponse(existing));
-        }
 
         var cartoon = new Cartoon
         {
             Sha256 = sha256,
-            OriginalFileName = request.File.FileName,
-            ContentType = request.File.ContentType,
+            OriginalFileName = originalFileName,
+            ContentType = contentType,
             Language = language,
             Status = CartoonStatus.Pending,
             UploadedAt = DateTimeOffset.UtcNow,

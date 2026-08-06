@@ -85,3 +85,25 @@ It writes bytes to a randomly-named temp file inside `data/images/` while hashin
 * `Results.File(path, contentType)`: Streams the file bytes with the right content type. Headers we set beforehand are preserved.
 * Double-checking the file: If the token exists but the underlying file is deleted, we treat it as expired, too. Better than returning 500.
 * `Results.Content(...,410)`: 410 Gone is the semantically correct status for "this used to exist and is intentionally no longer available." Search engines will drop the URL from indexes on 410, unlike 404.
+
+## Remote URL Fetching SSRF Prevention
+
+Server-Side Request Forgery (SSRF) is what we get when your server makes HTTP requests to a URL that attacker controls. From the attacker's browser they can't reach e.g. http://internal-db:5432 or cloud metadata endpoints like http://169.254.169.254 - but if they get our server to fetch a url for them, they suddenly can. Some classic attack targets are:
+
+* Cloud metadata: 169.254.169.254 on AWS/GCP/Azure — returns credentials, IAM tokens.
+* Docker-internal services: http://redis:6379, http://postgres:5432, other containers on the same network.
+* Loopback (127.0.0.1): reaches services that only listen locally, and — nastily — reaches your own app, potentially bypassing auth because the request is "local."
+
+
+The naive fix is rejecting URLs hose hostname is localhost or a private IP. But DNS rebinding can overcome this:
+
+1. Attacker registers 'evil.example.com', sets its DNS TTL to 0.
+2. First DNS lookup (hostname check) returns 1.2.3.4 -  a real public IP => Passes 
+3. Second DNS lookup (the actual `Socket.ConnectAsync`) returns 127.0.0.1 => The app connects to itself
+
+A better defense is checking the IP at the moment of connection, not url parse time. .NET gives us a hook: `SocketsHttpHandler.ConnectCallback`. We resolve DNS ourselves, reject any private/loopback address in the response, and only then create the socket.
+
+* `HttpCompletionOptions.ResponseHeadersRead` returns as soon as we have headers, before the body is downloaded. This let's us reject on content-type/length without pulling over the hard limit. 
+* The double size check, one on `Content-Length` header (fast) and one on actual bytes streamed (in cases the server lied or omitted the header).
+* `IPAddress.IsIPv4MappedToIPv6` unwrap - otherwise a malicious ::ffff:127.0.0.1 sneaks past the IPv4 checks.
+* fc00::/7 handled manually — .NET's `IsIPv6SiteLocal` covers the older, deprecated fec0::/10, but Unique Local Addresses use fc00::/7 and there's no built-in.

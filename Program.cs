@@ -13,7 +13,9 @@ var builder = WebApplication.CreateBuilder(args);
 // Custom Options
 builder.Services.Configure<CaptionOptions>(builder.Configuration.GetSection("Caption"));
 builder.Services.Configure<AuthOptions>(builder.Configuration.GetSection(AuthOptions.SectionName));
-builder.Services.Configure<ShareOptions>(builder.Configuration.GetSection(ShareOptions.SectionName));
+builder.Services.Configure<ShareOptions>(
+    builder.Configuration.GetSection(ShareOptions.SectionName)
+);
 
 // Add services to the container.
 builder.Services.AddRazorPages();
@@ -25,6 +27,21 @@ builder.Services.AddHttpClient<ICaptionService, OpenAiCaptionService>(
         http.Timeout = TimeSpan.FromSeconds(60);
     }
 );
+builder
+    .Services.AddHttpClient<UrlImageFetcher>(http =>
+    {
+        http.Timeout = TimeSpan.FromSeconds(15);
+        http.DefaultRequestHeaders.UserAgent.ParseAdd("ComicArchive/1.0");
+    })
+    .ConfigurePrimaryHttpMessageHandler(() =>
+        new SocketsHttpHandler
+        {
+            AllowAutoRedirect = true,
+            MaxAutomaticRedirections = 4,
+            AutomaticDecompression = System.Net.DecompressionMethods.All,
+            ConnectCallback = SsrfGuard.SafeConnectAsync,
+        }
+    );
 
 // Add DbContext
 builder.Services.AddDbContext<CartoonArchiveDbContext>(options =>
