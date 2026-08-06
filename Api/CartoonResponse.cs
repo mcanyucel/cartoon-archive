@@ -14,3 +14,7 @@ public record CartoonResponse(
     string? Description,
     string? ErrorMessage
 );
+
+public record NearDuplicate(int Id, string ThumbnailUrl, int DistanceBits);
+
+public record UploadResponse(CartoonResponse Cartoon, IReadOnlyList<NearDuplicate> NearDuplicates);

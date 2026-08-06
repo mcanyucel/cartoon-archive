@@ -53,6 +53,7 @@ builder.Services.AddSingleton<ImageStorage>();
 builder.Services.AddSingleton<ThumbnailGenerator>();
 builder.Services.AddHostedService<CaptionWorker>();
 builder.Services.AddHostedService<ShareCleanupWorker>();
+builder.Services.AddSingleton<PerceptualHasher>();
 
 // Ensure required directories exist
 Directory.CreateDirectory(Path.Combine(builder.Environment.ContentRootPath, "data"));

@@ -107,3 +107,29 @@ A better defense is checking the IP at the moment of connection, not url parse t
 * The double size check, one on `Content-Length` header (fast) and one on actual bytes streamed (in cases the server lied or omitted the header).
 * `IPAddress.IsIPv4MappedToIPv6` unwrap - otherwise a malicious ::ffff:127.0.0.1 sneaks past the IPv4 checks.
 * fc00::/7 handled manually — .NET's `IsIPv6SiteLocal` covers the older, deprecated fec0::/10, but Unique Local Addresses use fc00::/7 and there's no built-in.
+
+
+## Perceptual Hashing 
+
+A perceptual hash (pHash) is a fingerprint that stays similar when an image is resized, recompressed, or lightly cropped - the opposite of SHA256, which flips entirely for a single byte change. The DCT variant we are using works as follows:
+
+1. Downscale to a small grid (e.g. 32x32) and convert to grayscale.
+2. Apply a Discrete Cosine Transform (DCT) to decompose the image into frequency components.
+3. Take the top-left 8x8 block (the low-frequency, 'big picture' info).
+4. Compute the mean of these 64 values.
+5. Each bit of the 64-bit hash is 1 if the corresponding DCT value is above the mean, else 0.
+
+Because we are comparing only the shape of the low-frequency content, tiny pixel differences don't move most bits. Two images that 'look the same' typically end up 0-5 bits apart in Hamming distance. Above ~10 bits, they are usually different images. 
+
+How we use it: on upload, compute pHash for the new image, scan the db for existing cartoons within 5 bits, and if any match, warn the user (no hard blocking). Since SHA256 already catches byte-identical dupes, these are the 'same image different encoding/crop' cases.
+
+### Computing pHash
+
+The nuget library CoenM.ImageSharp.ImageHash requires SixLabors.ImageSharp - ImageSharp 2.x has open CVEs and 3.x moved to Six Labors' commercial-ish split license. So we use a custom class:
+
+* `SKBitmap.Decode + Resize + GetPixel`: No new dependencies, as thumbnail generation already includes SkiaSharp.
+* `GetPixel` is notoriously 'slow' in general case, but for 72 pixels total it's just noise; much simpler than fetching the raw pixel span.
+* BT.601 luma coefficients (0.299/0.587/0.114) are the standard perceptual weights for R/G/B when computing luminance. They match how humans perceive brightness.
+* `Task.Run`: Same reason as before; keeps decode/resize off the request thread.
+* `HammingDistance` is algorithm-agnostic; dHash and pHash both produce 64-bit long, and Hamming distance is meaningful for both.
+* dHash is a bit more sensitive than DCT pHash. Instead of ~5 bit threshold for pHash, we use ~10 bits as default for dHash. 

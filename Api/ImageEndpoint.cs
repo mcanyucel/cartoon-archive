@@ -34,6 +34,7 @@ public static class ImageEndpoints
         [FromForm] UploadImageRequest request,
         ImageStorage storage,
         ThumbnailGenerator thumbnailGenerator,
+        PerceptualHasher hasher,
         UrlImageFetcher urlFetcher,
         CartoonArchiveDbContext db,
         CancellationToken ct
@@ -96,11 +97,38 @@ public static class ImageEndpoints
         var sourcePath = storage.GetPath(sha256, contentType);
         await thumbnailGenerator.GenerateAsync(sha256, sourcePath, ct);
 
+        // Exact SHA matching
         var existing = await db
             .Cartoons.AsNoTracking()
             .FirstOrDefaultAsync(c => c.Sha256 == sha256, ct);
         if (existing is not null)
             return Results.Conflict(ToResponse(existing));
+
+        // Perceptual hash matching. dHash tends to give ~15 bits distance for
+        // heavily-downsampled duplicates and ~32 bits for unrelated images.
+        // 18 catches shrinks/re-encodes with margin; crops need a different algorithm.
+        var pHash = await hasher.HashAsync(sourcePath, ct);
+        const int ThresholdBits = 18;
+        var existingHashes = await db
+            .Cartoons.Where(c => c.PerceptualHash != null)
+            .Select(c => new
+            {
+                c.Id,
+                c.Sha256,
+                Hash = c.PerceptualHash!.Value,
+            })
+            .ToListAsync(ct);
+        var nearDuplicates = existingHashes
+            .Select(c => new
+            {
+                c.Id,
+                c.Sha256,
+                Distance = PerceptualHasher.HammingDistance(pHash, c.Hash),
+            })
+            .Where(x => x.Distance <= ThresholdBits)
+            .OrderBy(x => x.Distance)
+            .Select(x => new NearDuplicate(x.Id, $"/thumbnails/{x.Sha256}.webp", x.Distance))
+            .ToList();
 
         var cartoon = new Cartoon
         {
@@ -108,6 +136,7 @@ public static class ImageEndpoints
             OriginalFileName = originalFileName,
             ContentType = contentType,
             Language = language,
+            PerceptualHash = pHash,
             Status = CartoonStatus.Pending,
             UploadedAt = DateTimeOffset.UtcNow,
         };
@@ -115,7 +144,10 @@ public static class ImageEndpoints
         db.Cartoons.Add(cartoon);
         await db.SaveChangesAsync(ct);
 
-        return Results.Created($"/api/images/{cartoon.Id}", ToResponse(cartoon));
+        return Results.Created(
+            $"/api/images/{cartoon.Id}",
+            new UploadResponse(ToResponse(cartoon), nearDuplicates)
+        );
     }
 
     private static async Task<IResult> HandleList(CartoonArchiveDbContext db, CancellationToken ct)

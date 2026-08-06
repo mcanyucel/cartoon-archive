@@ -70,9 +70,17 @@ form.addEventListener("submit", async (event) => {
     });
 
     if (response.status === 201) {
-      setStatus("Uploaded. Redirecting…", "text-success");
-      form.reset();
-      window.location.href = "/";
+      const body = await response.json().catch(() => ({}));
+      const dups = body?.nearDuplicates ?? [];
+
+      if (dups.length > 0) {
+        setStatus("Uploaded, but similar images already exist.", "text-warning");
+        showDuplicateWarning(body.cartoon.id, dups);
+      } else {
+        setStatus("Uploaded. Redirecting…", "text-success");
+        form.reset();
+        window.location.href = "/";
+      }
     } else if (response.status === 409) {
       setStatus("This image is already in the archive.", "text-warning");
     } else {
@@ -86,3 +94,36 @@ form.addEventListener("submit", async (event) => {
     setStatus(`Upload failed: ${e.message}`, "text-danger");
   }
 });
+
+function showDuplicateWarning(uploadedId, dups) {
+  const warning = document.getElementById("dup-warning");
+  const thumbs = document.getElementById("dup-thumbs");
+  const deleteBtn = document.getElementById("dup-delete");
+  if (!warning || !thumbs || !deleteBtn) return;
+
+  thumbs.innerHTML = dups
+    .map(
+      (d) => `
+        <a href="/" title="${d.distanceBits}-bit difference">
+          <img src="${d.thumbnailUrl}" alt="" style="max-height: 96px; border-radius: 4px;">
+        </a>`,
+    )
+    .join("");
+  warning.classList.remove("d-none");
+
+  deleteBtn.onclick = async () => {
+    deleteBtn.disabled = true;
+    try {
+      const res = await fetch(`/api/images/${uploadedId}`, { method: "DELETE" });
+      if (res.ok) {
+        warning.classList.add("d-none");
+        setStatus("Upload deleted.", "text-muted");
+        form.reset();
+      } else {
+        setStatus(`Delete failed: ${res.statusText}`, "text-danger");
+      }
+    } finally {
+      deleteBtn.disabled = false;
+    }
+  };
+}
