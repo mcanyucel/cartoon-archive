@@ -4,6 +4,7 @@ window.CartoonCard = (function () {
   const STATUS_FAILED = 2;
 
   const cache = new Map();
+  let currentCartoon = null;
 
   function escapeHtml(str) {
     return String(str)
@@ -99,9 +100,24 @@ window.CartoonCard = (function () {
     });
   }
 
+  function setConfirmMode(modal, confirming) {
+    const actions = modal.querySelector("#cartoon-lightbox-actions");
+    const confirm = modal.querySelector("#cartoon-lightbox-confirm");
+    if (!actions || !confirm) return;
+    actions.classList.toggle("d-none", confirming);
+    actions.classList.toggle("d-flex", !confirming);
+    confirm.classList.toggle("d-none", !confirming);
+    confirm.classList.toggle("d-flex", confirming);
+  }
+
   function openLightbox(c) {
     const modal = document.getElementById("cartoon-lightbox");
     if (!modal || typeof bootstrap === "undefined") return;
+
+    currentCartoon = c;
+    const errEl = modal.querySelector("#cartoon-lightbox-error");
+    if (errEl) errEl.textContent = "";
+    setConfirmMode(modal, false);
 
     modal.querySelector("#cartoon-lightbox-image").src = c.imageUrl;
     modal.querySelector("#cartoon-lightbox-image").alt = c.description ?? "";
@@ -126,7 +142,7 @@ window.CartoonCard = (function () {
     bootstrap.Modal.getOrCreateInstance(modal).show();
   }
 
-  function attachLightboxHandler(container) {
+  function attachLightboxHandler(container, { onAfterDelete } = {}) {
     container.addEventListener("click", (event) => {
       const img = event.target.closest('img[data-action="open"]');
       if (!img) return;
@@ -135,6 +151,53 @@ window.CartoonCard = (function () {
       const c = cache.get(id);
       if (!c) return;
       openLightbox(c);
+    });
+
+    const modal = document.getElementById("cartoon-lightbox");
+    if (!modal || modal.dataset.wired) return;
+    modal.dataset.wired = "true";
+
+    const deleteBtn = modal.querySelector("#cartoon-lightbox-delete");
+    const confirmBtn = modal.querySelector("#cartoon-lightbox-delete-confirm");
+    const cancelBtn = modal.querySelector("#cartoon-lightbox-delete-cancel");
+    const errEl = modal.querySelector("#cartoon-lightbox-error");
+
+    deleteBtn?.addEventListener("click", () => {
+      if (errEl) errEl.textContent = "";
+      setConfirmMode(modal, true);
+    });
+
+    cancelBtn?.addEventListener("click", () => setConfirmMode(modal, false));
+
+    modal.addEventListener("hidden.bs.modal", () => setConfirmMode(modal, false));
+
+    confirmBtn?.addEventListener("click", async () => {
+      if (!currentCartoon) return;
+      const c = currentCartoon;
+      if (errEl) errEl.textContent = "";
+      confirmBtn.disabled = true;
+      if (cancelBtn) cancelBtn.disabled = true;
+
+      try {
+        const response = await fetch(`/api/images/${c.id}`, { method: "DELETE" });
+        if (response.ok) {
+          cache.delete(c.id);
+          currentCartoon = null;
+          bootstrap.Modal.getOrCreateInstance(modal).hide();
+          if (onAfterDelete) await onAfterDelete();
+        } else {
+          const err = await response.json().catch(() => ({}));
+          if (errEl)
+            errEl.textContent = `Delete failed: ${err.error ?? response.statusText}`;
+          setConfirmMode(modal, false);
+        }
+      } catch (e) {
+        if (errEl) errEl.textContent = `Delete failed: ${e.message}`;
+        setConfirmMode(modal, false);
+      } finally {
+        confirmBtn.disabled = false;
+        if (cancelBtn) cancelBtn.disabled = false;
+      }
     });
   }
 

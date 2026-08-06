@@ -25,6 +25,7 @@ public static class ImageEndpoints
         group.MapGet("/", HandleList);
         group.MapGet("/search", HandleSearch);
         group.MapPost("/{id:int}/retry", HandleRetry);
+        group.MapDelete("/{id:int}", HandleDelete);
 
         return routes;
     }
@@ -144,6 +145,34 @@ public static class ImageEndpoints
             .Select(t => $"\"{t}\"");
 
         return string.Join(" ", tokens);
+    }
+
+    private static async Task<IResult> HandleDelete(
+        int id,
+        CartoonArchiveDbContext db,
+        ImageStorage storage,
+        ThumbnailGenerator thumbnails,
+        CancellationToken ct
+    )
+    {
+        var cartoon = await db.Cartoons.FirstOrDefaultAsync(c => c.Id == id, ct);
+        if (cartoon is null)
+            return Results.NotFound();
+
+        var imagePath = storage.GetPath(cartoon.Sha256, cartoon.ContentType);
+        var thumbPath = thumbnails.GetPath(cartoon.Sha256);
+
+        db.Cartoons.Remove(cartoon);
+        await db.SaveChangesAsync(ct);
+
+        // Best-effort file cleanup after DB commit; DB is the source of truth.
+        // Sha256 is unique per Cartoon (unique index), so no other row references these files.
+        if (File.Exists(imagePath))
+            File.Delete(imagePath);
+        if (File.Exists(thumbPath))
+            File.Delete(thumbPath);
+
+        return Results.NoContent();
     }
 
     private static async Task<IResult> HandleRetry(
