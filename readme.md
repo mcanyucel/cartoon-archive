@@ -10,11 +10,17 @@ Written in ASP.NET Core, backed by SQLite (with FTS5), and packaged as a single 
 
 Placeholders below. Replace each with a screenshot committed under `docs/`, for example `![Main archive view](docs/screenshot-main.png)`.
 
-* _Main archive view_
-* _Upload dialog with drag-and-drop_
-* _Search results with match highlighting_
-* _Item detail view with caption editing_
-* _Share link recipient view_
+#### Main archive view 
+![Main archive view](docs/cartoon4.png)
+
+#### Upload dialog with drag-and-drop
+![Upload dialog with drag-and-drop](docs/cartoon1.png)
+
+#### Search results with match highlighting 
+![Search results with match highlighting](docs/cartoon2.png)
+
+#### Item detail view with caption editing
+![Item detail view with caption editing](docs/cartoon3.png)
 
 ## What it does
 
@@ -57,7 +63,7 @@ A background sweeper (`Sharing/ShareCleanupWorker.cs`) removes expired tokens on
 
 When you upload an image, the app computes a perceptual hash (dHash) and compares it against the hashes of existing items. If any come within a threshold Hamming distance, the upload page shows a warning listing the likely duplicates and lets you decide whether to keep the new copy or discard it.
 
-**Be honest about the effectiveness.** The current dHash-based check misses cases you would expect it to catch, including pairs of images that look nearly identical to a human eye. Treat it as a weak advisory layer, not a reliable near-duplicate detector. The interface for the check is in place so a stronger algorithm (or a combination, or a small learned embedding) can be swapped in without touching the upload flow.
+**Note:** The current dHash-based check misses cases you would expect it to catch, including pairs of images that look nearly identical to a human eye. Treat it as a weak advisory layer, not a reliable near-duplicate detector. The interface for the check is in place so a stronger algorithm (or a combination, or a small learned embedding) can be swapped in without touching the upload flow.
 
 Exact byte-for-byte duplicates are handled separately by a SHA256 unique index at the storage layer, and that path is 100 percent reliable. Re-uploading the same bytes returns the existing item instead of creating a copy.
 
