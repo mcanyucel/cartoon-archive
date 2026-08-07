@@ -1,19 +1,95 @@
 # Cartoon Archive
 
-A self-hosted archive for cartoons and caricatures. Every upload gets an automatic caption from an OpenAI Vision model, and captions become searchable through SQLite FTS5. Written in ASP.NET Core and packaged as a single container.
+Cartoon Archive is a self-hosted archive for cartoons, caricatures, and any single-image content where the interesting bit is what happens inside the frame. Every upload is captioned automatically by a Vision LLM, and those captions become the searchable index. Instead of hunting through filenames or maintaining a manual tag system, you type what you remember seeing ("a dog on a bicycle", "courtroom scene", "green background") and the archive returns the images that match.
 
-## Features
+Written in ASP.NET Core, backed by SQLite (with FTS5), and packaged as a single container. A multi-arch image is published to GHCR, and a GitHub Actions workflow cuts a new image on every git tag.
 
-* Upload from a local file or a URL, with drag-and-drop support. Accepts JPEG, PNG, and WebP.
-* Automatic captions on every upload. Each caption can be edited by hand or regenerated on demand.
-* Full-text search over captions with Turkish diacritic folding. Searching for "yalniz" matches "yanlız", and "uber" matches "über".
-* Search results highlight the matched terms in context.
-* Exact-duplicate rejection at upload time via SHA256. Re-uploading the same bytes returns a reference to the existing item instead of creating a copy.
-* Perceptual near-duplicate warning via dHash. In practice this is not very accurate and misses cases you would think are obvious near-matches. It is included as a weak advisory layer that flags what it can, with the intent of replacing it with a stronger algorithm later.
-* Temporary sharing via short-lived tokenized URLs. The recipient does not need an account, and each token grants access to a single image for a configurable time-to-live.
-* SSRF protection on URL-based uploads, including a specific defense against DNS rebinding. The app resolves the target IP itself and rejects private, loopback, or cloud-metadata addresses at connect time.
-* Optional reverse-proxy authentication mode. The app reads the user identity from a header (default `X-Remote-User`) forwarded by whatever SSO gateway is in front of it.
+**Before deploying, read the [Before you expose it to the internet](#before-you-expose-it-to-the-internet) section.** The app has no built-in authentication and will run wide open by default. That is fine for a LAN-only or SSO-fronted deployment, but an unwrapped public deployment attached to a real OpenAI API key will become an expensive lesson within days.
+
+## Screenshots
+
+Placeholders below. Replace each with a screenshot committed under `docs/`, for example `![Main archive view](docs/screenshot-main.png)`.
+
+* _Main archive view_
+* _Upload dialog with drag-and-drop_
+* _Search results with match highlighting_
+* _Item detail view with caption editing_
+* _Share link recipient view_
+
+## What it does
+
+### Automatic captioning
+
+Every upload is queued for captioning as soon as the bytes hit disk. The upload endpoint stores the file and returns immediately with the item marked `Pending`; the UI shows a placeholder while the caption is being generated. A background worker (`Captioning/CaptionWorker.cs`) polls for pending items on a 5-second idle loop and processes them one at a time. Once a caption comes back the item flips to `Ready` and becomes visible in search.
+
+What you need to run it:
+
+* An OpenAI API key. It goes in `Caption:ApiKey` (user-secrets locally, or `Caption__ApiKey` env var in Docker). Nothing in the code assumes OpenAI specifically.
+* A base URL. The default is `https://api.openai.com/v1/`, but `Caption__BaseUrl` and `Caption__Model` are configurable, so the same code works against any OpenAI-compatible endpoint: Groq, Together, a local Ollama instance running in OpenAI-compat mode, self-hosted vLLM, and so on. Swap the base URL and the model name, keep the key format.
+* A language per upload. The caption is generated in that language, so a Turkish caricature gets a Turkish caption and a French one gets a French caption. Search does the diacritic folding to keep the search box language-agnostic.
+
+Captions are not sacred. You can edit any caption by hand from the item detail view, or regenerate it with one click if the first pass is bad. Regenerating re-queues the item for the worker to pick up on the next tick.
+
+### Search by what the image shows
+
+Search runs over the captions rather than filenames or a manual tag system, which means you search by content. If the LLM said the image contains "a black cat sleeping on a piano", searching for "cat piano" finds it.
+
+Under the hood this is SQLite FTS5 with the `unicode61` tokenizer and `remove_diacritics 2`. The practical effect:
+
+* Diacritics are transparent across Latin scripts. Searching for "yalniz" matches "yanlız" (Turkish), "uber" matches "über" (German), "cafe" matches "café" (French). You do not need to know which language a caption was written in to find it.
+* Case is ignored.
+* Matching terms in the caption text are highlighted in the search results so you can see at a glance why a given item came back.
+
+This is not vector-based semantic search. There are no embeddings and no vector index. It is straight keyword full-text search over what the LLM already wrote. In practice that is enough, because the caption is already a "what the image shows" summary, so keyword search over it behaves like semantic search over the image would. Adding embedding-based fuzzy search is a reasonable next step if the archive grows into the tens of thousands and lexical recall starts to fall short.
+
+### Temporary sharing
+
+Sometimes you want to send one specific image to someone who does not have an account on your instance, without opening up the rest of the archive. Clicking share on an item generates a URL like `/s/a1b2c3d4e5f6...` that:
+
+* Grants read-only access to that one image only. The recipient sees the image and a small caption hint if you provided one, nothing else.
+* Expires after a configurable time-to-live (`Share:TokenTtlHours`, default 1 hour). Once expired, the URL returns 410 Gone.
+* Is safe to send over any channel. The token is 128 bits of entropy, which is 32 hex characters, and is generated with `RandomNumberGenerator.GetBytes`. It is not guessable.
+* Bypasses the app's authentication middleware, so the recipient does not need an SSO login or account. The token is the authorization.
+
+A background sweeper (`Sharing/ShareCleanupWorker.cs`) removes expired tokens on `Share:SweepIntervalMinutes` (default 10) so the table stays small even after heavy sharing.
+
+### Near-duplicate detection (weak, but present)
+
+When you upload an image, the app computes a perceptual hash (dHash) and compares it against the hashes of existing items. If any come within a threshold Hamming distance, the upload page shows a warning listing the likely duplicates and lets you decide whether to keep the new copy or discard it.
+
+**Be honest about the effectiveness.** The current dHash-based check misses cases you would expect it to catch, including pairs of images that look nearly identical to a human eye. Treat it as a weak advisory layer, not a reliable near-duplicate detector. The interface for the check is in place so a stronger algorithm (or a combination, or a small learned embedding) can be swapped in without touching the upload flow.
+
+Exact byte-for-byte duplicates are handled separately by a SHA256 unique index at the storage layer, and that path is 100 percent reliable. Re-uploading the same bytes returns the existing item instead of creating a copy.
+
+### Everything else
+
+* Upload from a local file, drag-and-drop, or a remote URL. Accepts JPEG, PNG, and WebP.
+* Server-Side Request Forgery protection on URL-based uploads, including an explicit defense against DNS rebinding (the app resolves the target IP itself and re-checks at connect time, not just at URL parse time).
+* Optional reverse-proxy authentication mode. The app reads the user identity from a header (default `X-Remote-User`, override via `Auth__HeaderName`) forwarded by whatever SSO gateway is in front of it. Public paths like `/s/*` and static assets bypass the auth check so share links keep working.
 * Dark theme with a toggle. App version shown in the footer.
+
+## Before you expose it to the internet
+
+**This app has no built-in access controls when `Auth__Mode=None`, which is the default.** With that setting, any HTTP client that can reach the port can:
+
+* Upload arbitrary images, each of which is immediately sent to the configured Vision API. If you are using a real OpenAI key, every upload spends real money.
+* View every image and every caption in the archive.
+* Edit and regenerate captions, which spends more money.
+* Generate ephemeral share links.
+
+There are no rate limits, no upload quotas, no user accounts, and no CAPTCHA. There is nothing in the app itself that stops a bot from uploading a million images in an afternoon. If you point a domain at this app running in `None` mode and connect it to a real OpenAI key, expect a very expensive lesson within days if not hours. Scanning bots find new HTTP endpoints very quickly.
+
+**Do not run this open to the public internet.** Full stop. Even a domain nobody knows about will be found.
+
+The two safe deployment shapes are:
+
+1. **Private network only.** Bind it to `localhost`, or run it inside a Docker network with no published port, or put it behind a VPN or Tailscale. If the only clients that can reach port 5000 are ones you trust, `Auth__Mode=None` is fine and you don't need to think about the rest.
+
+2. **Reverse proxy that authenticates before the request reaches the app.** In decreasing order of complexity:
+   * **Full SSO** (Authelia, Keycloak, oauth2-proxy, tinyauth). Set `Auth__Mode=ReverseProxy` and `Auth__HeaderName` to whatever header your gateway forwards (Authelia sends `Remote-User`). The app then enforces the presence of that header on every request that is not on the public allowlist (`/s/*`, `/css/*`, `/js/*`, `/lib/*`, `/favicon.ico`).
+   * **HTTP basic auth in Caddy or nginx.** `Auth__Mode=None` is fine here because the proxy handles all auth. Nothing hits the app without valid credentials. The included `docker-compose.caddy.yml` is a working example of this.
+
+If you cannot put an auth layer in front, do not connect the app to a paid captioning API. Point `Caption__BaseUrl` at a local Ollama instance or a free-tier LLM with a hard spending cap set on the provider side.
 
 ## Deployment
 
@@ -22,7 +98,7 @@ Two compose files live at the repo root:
 * `docker-compose.yml`: bare-metal, app on port 5000, no reverse proxy.
 * `docker-compose.caddy.yml`: app behind Caddy with HTTP basic auth.
 
-Both share the `cartoon-data` named volume, so you can switch between them without losing the database. Secrets go in a `.env` file at the repo root, which is git-ignored and docker-ignored.
+Both share the `cartoon-data` named volume, so you can switch between them without losing the database. Secrets go in a `.env` file at the repo root, which is git-ignored and docker-ignored. Use `.env.example` as the template.
 
 Images are published to `ghcr.io/mcanyucel/cartoon-archive`. By default the compose files pull the `latest` tag. To pin a specific version, set `APP_VERSION=0.1.0` in `.env`. Both files also keep `build: .` so `docker compose build` on a source checkout produces a locally-tagged image with the same name, useful for iterating without pushing to the registry.
 
@@ -166,7 +242,7 @@ git push && git push --tags
 A GitHub Actions workflow at `.github/workflows/release.yml` picks up the tag, builds a multi-arch (`linux/amd64` and `linux/arm64`) image, and pushes to GHCR with both the version tag and `latest`.
 
 
-## Design notes
+## Appendix: implementation notes
 
 Everything below documents the reasoning behind the implementation. Read it if you plan to extend or modify the code.
 
