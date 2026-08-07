@@ -25,6 +25,8 @@ public static class ImageEndpoints
         group.MapGet("/", HandleList);
         group.MapGet("/search", HandleSearch);
         group.MapPost("/{id:int}/retry", HandleRetry);
+        group.MapPost("/{id:int}/regenerate", HandleRegenerate);
+        group.MapPatch("/{id:int}", HandleEdit);
         group.MapDelete("/{id:int}", HandleDelete);
 
         return routes;
@@ -250,6 +252,84 @@ public static class ImageEndpoints
 
         cartoon.Status = CartoonStatus.Pending;
         cartoon.ErrorMessage = null;
+        await db.SaveChangesAsync(ct);
+
+        return Results.Ok(ToResponse(cartoon));
+    }
+
+    private static async Task<IResult> HandleEdit(
+        int id,
+        [FromBody] EditRequest request,
+        CartoonArchiveDbContext db,
+        CancellationToken ct
+    )
+    {
+        var cartoon = await db.Cartoons.FirstOrDefaultAsync(c => c.Id == id, ct);
+        if (cartoon is null)
+            return Results.NotFound();
+
+        var description = request.Description?.Trim();
+        var language = request.Language?.Trim();
+
+        if (description is null && language is null)
+            return Results.BadRequest(
+                new { error = "Provide description and/or language to update." }
+            );
+
+        if (language is not null)
+        {
+            if (language.Length == 0 || language.Length > 16)
+                return Results.BadRequest(
+                    new { error = "Language must be a non-empty tag under 16 characters." }
+                );
+            cartoon.Language = language;
+        }
+
+        if (description is not null)
+        {
+            if (description.Length == 0 || description.Length > 10_000)
+                return Results.BadRequest(
+                    new { error = "Description must be between 1 and 10,000 characters." }
+                );
+            cartoon.Description = description;
+            // FTS trigger fires on Description UPDATE, so the index re-syncs automatically.
+        }
+
+        await db.SaveChangesAsync(ct);
+        return Results.Ok(ToResponse(cartoon));
+    }
+
+    private static async Task<IResult> HandleRegenerate(
+        int id,
+        [FromBody] RegenerateRequest? request,
+        CartoonArchiveDbContext db,
+        CancellationToken ct
+    )
+    {
+        var cartoon = await db.Cartoons.FirstOrDefaultAsync(c => c.Id == id, ct);
+        if (cartoon is null)
+            return Results.NotFound();
+        if (cartoon.Status != CartoonStatus.Ready)
+            return Results.Conflict(
+                new { error = "Only ready cartoons can be regenerated. Use retry for failed ones." }
+            );
+
+        var language = request?.Language?.Trim();
+        if (!string.IsNullOrEmpty(language))
+        {
+            if (language.Length > 16)
+                return Results.BadRequest(
+                    new { error = "Language must be under 16 characters." }
+                );
+            cartoon.Language = language;
+        }
+
+        // Clear description so a failed regen doesn't leave stale text alongside Failed status.
+        // FTS trigger deletes the old FTS row on Description UPDATE.
+        cartoon.Description = null;
+        cartoon.CaptionedAt = null;
+        cartoon.ErrorMessage = null;
+        cartoon.Status = CartoonStatus.Pending;
         await db.SaveChangesAsync(ct);
 
         return Results.Ok(ToResponse(cartoon));

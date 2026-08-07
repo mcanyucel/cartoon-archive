@@ -78,6 +78,31 @@
                                 <span class="badge bg-secondary" id="cartoon-lightbox-language"></span>
                             </p>
                             <p id="cartoon-lightbox-description" class="small mb-2"></p>
+                            <div id="cartoon-lightbox-desc-controls" class="d-flex gap-3 mb-2 small">
+                                <button type="button" class="btn btn-link btn-sm p-0" id="cartoon-lightbox-edit">Edit</button>
+                                <button type="button" class="btn btn-link btn-sm p-0" id="cartoon-lightbox-regen">Regenerate</button>
+                            </div>
+                            <div id="cartoon-lightbox-edit-form" class="d-none mb-2">
+                                <textarea id="cartoon-lightbox-edit-text" class="form-control form-control-sm mb-2" rows="5"></textarea>
+                                <div class="d-flex gap-2">
+                                    <button type="button" class="btn btn-primary btn-sm" id="cartoon-lightbox-edit-save">Save</button>
+                                    <button type="button" class="btn btn-secondary btn-sm" id="cartoon-lightbox-edit-cancel">Cancel</button>
+                                </div>
+                            </div>
+                            <div id="cartoon-lightbox-regen-form" class="d-none mb-2">
+                                <label class="form-label small mb-1" for="cartoon-lightbox-regen-lang">Regenerate in:</label>
+                                <select id="cartoon-lightbox-regen-lang" class="form-select form-select-sm mb-2">
+                                    <option value="tr">Türkçe</option>
+                                    <option value="en">English</option>
+                                    <option value="de">Deutsch</option>
+                                    <option value="fr">Français</option>
+                                    <option value="es">Español</option>
+                                </select>
+                                <div class="d-flex gap-2">
+                                    <button type="button" class="btn btn-primary btn-sm" id="cartoon-lightbox-regen-confirm">Regenerate</button>
+                                    <button type="button" class="btn btn-secondary btn-sm" id="cartoon-lightbox-regen-cancel">Cancel</button>
+                                </div>
+                            </div>
                             <p class="text-muted small mb-0" id="cartoon-lightbox-uploaded"></p>
                         </div>
                     </div>

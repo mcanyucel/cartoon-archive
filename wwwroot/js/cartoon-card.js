@@ -153,6 +153,22 @@ window.CartoonCard = (function () {
     confirm.classList.toggle("d-flex", confirming);
   }
 
+  function setEditMode(modal, editing) {
+    const controls = modal.querySelector("#cartoon-lightbox-desc-controls");
+    const form = modal.querySelector("#cartoon-lightbox-edit-form");
+    if (!controls || !form) return;
+    form.classList.toggle("d-none", !editing);
+    if (editing) controls.classList.add("d-none");
+  }
+
+  function setRegenMode(modal, regenerating) {
+    const controls = modal.querySelector("#cartoon-lightbox-desc-controls");
+    const form = modal.querySelector("#cartoon-lightbox-regen-form");
+    if (!controls || !form) return;
+    form.classList.toggle("d-none", !regenerating);
+    if (regenerating) controls.classList.add("d-none");
+  }
+
   function openLightbox(c) {
     const modal = document.getElementById("cartoon-lightbox");
     if (!modal || typeof bootstrap === "undefined") return;
@@ -166,6 +182,12 @@ window.CartoonCard = (function () {
     const shareBtn = modal.querySelector("#cartoon-lightbox-share");
     if (shareBtn) shareBtn.disabled = c.status !== STATUS_READY;
     setConfirmMode(modal, false);
+    setEditMode(modal, false);
+    setRegenMode(modal, false);
+
+    // Edit + Regenerate are only meaningful for Ready cartoons.
+    const descControls = modal.querySelector("#cartoon-lightbox-desc-controls");
+    if (descControls) descControls.classList.toggle("d-none", c.status !== STATUS_READY);
 
     modal.querySelector("#cartoon-lightbox-image").src = c.imageUrl;
     modal.querySelector("#cartoon-lightbox-image").alt = c.description ?? "";
@@ -209,6 +231,16 @@ window.CartoonCard = (function () {
     const confirmBtn = modal.querySelector("#cartoon-lightbox-delete-confirm");
     const cancelBtn = modal.querySelector("#cartoon-lightbox-delete-cancel");
     const shareBtn = modal.querySelector("#cartoon-lightbox-share");
+    const editBtn = modal.querySelector("#cartoon-lightbox-edit");
+    const editText = modal.querySelector("#cartoon-lightbox-edit-text");
+    const editSave = modal.querySelector("#cartoon-lightbox-edit-save");
+    const editCancel = modal.querySelector("#cartoon-lightbox-edit-cancel");
+    const regenBtn = modal.querySelector("#cartoon-lightbox-regen");
+    const regenLang = modal.querySelector("#cartoon-lightbox-regen-lang");
+    const regenConfirm = modal.querySelector("#cartoon-lightbox-regen-confirm");
+    const regenCancel = modal.querySelector("#cartoon-lightbox-regen-cancel");
+    const descEl = modal.querySelector("#cartoon-lightbox-description");
+    const descControls = modal.querySelector("#cartoon-lightbox-desc-controls");
     const errEl = modal.querySelector("#cartoon-lightbox-error");
 
     function setMessage(text, className) {
@@ -232,7 +264,101 @@ window.CartoonCard = (function () {
 
     cancelBtn?.addEventListener("click", () => setConfirmMode(modal, false));
 
-    modal.addEventListener("hidden.bs.modal", () => setConfirmMode(modal, false));
+    modal.addEventListener("hidden.bs.modal", () => {
+      setConfirmMode(modal, false);
+      setEditMode(modal, false);
+      setRegenMode(modal, false);
+    });
+
+    editBtn?.addEventListener("click", () => {
+      if (!currentCartoon || !editText) return;
+      setMessage("", "");
+      editText.value = currentCartoon.description ?? "";
+      setEditMode(modal, true);
+    });
+
+    editCancel?.addEventListener("click", () => {
+      setEditMode(modal, false);
+      if (descControls && currentCartoon?.status === STATUS_READY)
+        descControls.classList.remove("d-none");
+    });
+
+    editSave?.addEventListener("click", async () => {
+      if (!currentCartoon || !editText) return;
+      const description = editText.value.trim();
+      if (description.length === 0) {
+        setMessage("Description cannot be empty.", "text-warning");
+        return;
+      }
+      editSave.disabled = true;
+      if (editCancel) editCancel.disabled = true;
+      try {
+        const response = await fetch(`/api/images/${currentCartoon.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ description }),
+        });
+        if (response.ok) {
+          const updated = await response.json();
+          currentCartoon = updated;
+          cache.set(updated.id, updated);
+          if (descEl) descEl.textContent = updated.description ?? "";
+          setEditMode(modal, false);
+          if (descControls) descControls.classList.remove("d-none");
+          setMessage("Description saved.", "text-success");
+        } else {
+          const err = await response.json().catch(() => ({}));
+          setMessage(`Save failed: ${err.error ?? response.statusText}`, "text-danger");
+        }
+      } catch (e) {
+        setMessage(`Save failed: ${e.message}`, "text-danger");
+      } finally {
+        editSave.disabled = false;
+        if (editCancel) editCancel.disabled = false;
+      }
+    });
+
+    regenBtn?.addEventListener("click", () => {
+      if (!currentCartoon || !regenLang) return;
+      setMessage("", "");
+      regenLang.value = currentCartoon.language ?? "tr";
+      setRegenMode(modal, true);
+    });
+
+    regenCancel?.addEventListener("click", () => {
+      setRegenMode(modal, false);
+      if (descControls && currentCartoon?.status === STATUS_READY)
+        descControls.classList.remove("d-none");
+    });
+
+    regenConfirm?.addEventListener("click", async () => {
+      if (!currentCartoon) return;
+      const c = currentCartoon;
+      const language = regenLang?.value?.trim() ?? "";
+      regenConfirm.disabled = true;
+      if (regenCancel) regenCancel.disabled = true;
+      try {
+        const response = await fetch(`/api/images/${c.id}/regenerate`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(language ? { language } : {}),
+        });
+        if (response.ok) {
+          cache.delete(c.id);
+          currentCartoon = null;
+          bootstrap.Modal.getOrCreateInstance(modal).hide();
+          if (onAfterDelete) await onAfterDelete();
+        } else {
+          const err = await response.json().catch(() => ({}));
+          setMessage(`Regenerate failed: ${err.error ?? response.statusText}`, "text-danger");
+        }
+      } catch (e) {
+        setMessage(`Regenerate failed: ${e.message}`, "text-danger");
+      } finally {
+        regenConfirm.disabled = false;
+        if (regenCancel) regenCancel.disabled = false;
+      }
+    });
 
     confirmBtn?.addEventListener("click", async () => {
       if (!currentCartoon) return;

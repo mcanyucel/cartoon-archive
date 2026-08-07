@@ -18,3 +18,7 @@ public record CartoonResponse(
 public record NearDuplicate(int Id, string ThumbnailUrl, int DistanceBits);
 
 public record UploadResponse(CartoonResponse Cartoon, IReadOnlyList<NearDuplicate> NearDuplicates);
+
+public record EditRequest(string? Description, string? Language);
+
+public record RegenerateRequest(string? Language);
