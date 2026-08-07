@@ -26,6 +26,21 @@ Sketch: `Tag` table with a many-to-many join to `Cartoons`. Two design calls to 
 * Whether tag text goes into the FTS index (so `#turkish` shows up when searching "turkish"), or stays as a separate filter that ANDs with the search query. The second is cleaner but less discoverable.
 * Whether tags are freeform or come from a controlled list. Freeform is easier but eventually collects `#favorite`, `#favourite`, `#fav` all pointing at the same intent.
 
+### Lightbox navigation (prev/next + keyboard arrows)
+
+Right now clicking an image opens the detail view for that one item, and viewing another one means going back to the archive. Turn the lightbox into a browsing surface instead:
+
+* On-screen prev/next affordances on the left and right edges of the lightbox.
+* Keyboard: left and right arrow keys to move between items, escape to close (if it is not already wired).
+* Preload the immediate neighbors (one or two in each direction) so arrow presses feel instant instead of blank-frame-then-image.
+
+Design calls to make:
+
+* **What defines "next"?** The natural answer is: whichever list brought you here. If you clicked from a search results view, next means the next matching item; if you clicked from the main archive, next means the next by upload order. This implies the lightbox needs to know its parent context, either via a query string on the item URL or a small in-memory list cached in the SPA-ish frontend state.
+* **URL sync.** Update the address bar as the user navigates so a refresh or a shared link lands on the currently-viewed image, not the one they originally opened. `history.replaceState` on each transition, no full navigation.
+
+Small feature, big quality-of-life boost once the archive has more than a screenful of items.
+
 ### Bulk operations
 
 Once the archive grows past a few hundred items, per-item actions get tedious. Reasonable candidates:
