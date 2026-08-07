@@ -43,6 +43,7 @@ window.CartoonCard = (function () {
           `;
     }
     return `
+          ${c.snippet ? `<p class="small mb-1">${c.snippet}</p>` : ""}
           <details class="small">
               <summary class="text-muted">Details</summary>
               <p class="mb-0 mt-1">${escapeHtml(c.description ?? "")}</p>

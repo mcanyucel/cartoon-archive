@@ -160,7 +160,7 @@ public static class ImageEndpoints
             .AsNoTracking()
             .ToListAsync(ct);
 
-        return Results.Ok(cartoons.Select(ToResponse));
+        return Results.Ok(cartoons.Select(c => ToResponse(c)));
     }
 
     private static async Task<IResult> HandleSearch(
@@ -191,8 +191,36 @@ public static class ImageEndpoints
             .AsNoTracking()
             .ToListAsync(ct);
 
-        return Results.Ok(cartoons.Select(ToResponse));
+        // Second query for FTS5 snippet() output. Uses HTML-safe placeholder markers
+        // so we can HTML-escape the whole snippet server-side, then upgrade the
+        // markers to real <mark> tags — descriptions can't inject HTML this way.
+        var snippets = await db
+            .Database.SqlQuery<SnippetRow>(
+                $"""
+                SELECT c.Id, snippet(CartoonsFts, 0, '%%OPEN%%', '%%CLOSE%%', '…', 15) AS Snippet
+                FROM Cartoons c
+                JOIN CartoonsFts f ON f.rowid = c.Id
+                WHERE CartoonsFts MATCH {match}
+                """
+            )
+            .ToDictionaryAsync(x => x.Id, x => SafeSnippet(x.Snippet), ct);
+
+        return Results.Ok(
+            cartoons.Select(c => ToResponse(c, snippets.GetValueOrDefault(c.Id)))
+        );
     }
+
+    private sealed class SnippetRow
+    {
+        public int Id { get; set; }
+        public string Snippet { get; set; } = "";
+    }
+
+    private static string SafeSnippet(string raw) =>
+        System
+            .Text.Encodings.Web.HtmlEncoder.Default.Encode(raw)
+            .Replace("%%OPEN%%", "<mark>")
+            .Replace("%%CLOSE%%", "</mark>");
 
     /// <summary>
     /// Turn user input into a safe FTS5 MATCH expression:
@@ -335,7 +363,7 @@ public static class ImageEndpoints
         return Results.Ok(ToResponse(cartoon));
     }
 
-    private static CartoonResponse ToResponse(Cartoon c) =>
+    private static CartoonResponse ToResponse(Cartoon c, string? snippet = null) =>
         new(
             Id: c.Id,
             Sha256: c.Sha256,
@@ -346,6 +374,7 @@ public static class ImageEndpoints
             ImageUrl: $"/images/{c.Sha256}{ImageStorage.ExtensionFor(c.ContentType)}",
             ThumbnailUrl: $"/thumbnails/{c.Sha256}.webp",
             Description: c.Description,
-            ErrorMessage: c.ErrorMessage
+            ErrorMessage: c.ErrorMessage,
+            Snippet: snippet
         );
 }

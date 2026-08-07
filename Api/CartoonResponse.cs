@@ -12,7 +12,8 @@ public record CartoonResponse(
     string ImageUrl,
     string ThumbnailUrl,
     string? Description,
-    string? ErrorMessage
+    string? ErrorMessage,
+    string? Snippet = null
 );
 
 public record NearDuplicate(int Id, string ThumbnailUrl, int DistanceBits);
