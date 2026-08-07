@@ -1,7 +1,7 @@
 services:
   app:
     build: .
-    image: cartoon-archive:dev
+    image: ghcr.io/mcanyucel/cartoon-archive:${APP_VERSION:-latest}
     restart: unless-stopped
     expose:
       - "5000"

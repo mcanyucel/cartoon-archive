@@ -155,13 +155,15 @@ Two compose files at the repo root:
 
 Both share the `cartoon-data` named volume, so you can switch variants without losing the DB. Secrets live in a `.env` file at the repo root (git-ignored, docker-ignored).
 
+Images are published to `ghcr.io/mcanyucel/cartoon-archive`. By default the compose files pull `:latest`; set `APP_VERSION=0.1.0` in `.env` to pin a specific version. Both files also keep `build: .` so `docker compose build` on a source checkout produces a locally-tagged image with the same name — useful for iterating without pushing.
+
 ### Bare-metal (`docker-compose.yml`)
 
 ```yaml
 services:
   app:
     build: .
-    image: cartoon-archive:dev
+    image: ghcr.io/mcanyucel/cartoon-archive:${APP_VERSION:-latest}
     container_name: cartoon-archive
     restart: unless-stopped
     ports:
@@ -189,7 +191,7 @@ The app is no longer exposed to the host — only Caddy is. Caddy handles TLS an
 services:
   app:
     build: .
-    image: cartoon-archive:dev
+    image: ghcr.io/mcanyucel/cartoon-archive:${APP_VERSION:-latest}
     restart: unless-stopped
     expose:
       - "5000"
