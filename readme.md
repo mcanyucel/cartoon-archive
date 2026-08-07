@@ -133,3 +133,148 @@ The nuget library CoenM.ImageSharp.ImageHash requires SixLabors.ImageSharp - Ima
 * `Task.Run`: Same reason as before; keeps decode/resize off the request thread.
 * `HammingDistance` is algorithm-agnostic; dHash and pHash both produce 64-bit long, and Hamming distance is meaningful for both.
 * dHash is a bit more sensitive than DCT pHash. Instead of ~5 bit threshold for pHash, we use ~10 bits as default for dHash. 
+
+## SSO Support
+
+`TrustProxyHeaders` is `false` - the safe bare-metal default. For a deployment behind a reverse-proxy, flip it to `true` via env variable `App__TrustProxyHeaders=true`. By default, `UseForwardedHeaders` only trusts `X-Forwarded-*` from `127.0.0.1` and `::1`. In Docker, the reverse proxy container has a private IP like `172.19.0.2`. If we don't clear the allow list via `KnownNetworks.Clear() + KnownProxies.Clear()`, the forwarded headers get ignored and the fix does nothing. Clearing means **trust everyone** - safe there because the app should not be exposed to anyone but the proxy.
+
+## Persisting asp.net tokens 
+
+If the app is run on a container, the '/home/app/.aspnet/DataProtection-Keys' may not survive container restarts. That path is inside the container's ephemeral layer, not on a persisted volume. This will invalidate antiforgery tokens, auth cookies, and anything else encrypted with them. 
+
+* `SetApplicationName` isolates key rings if any other asp.net app shares the same volume.
+* The path resolves to `/app/data/dp-keys` inside the container and sits on the named volume.
+* Locally it becomes "./data/dp-keys", which is already git-ignored via the `data/` gitignore rule.
+
+
+## Deployment
+
+Two compose files at the repo root:
+- `docker-compose.yml` — bare-metal, app on port 5000, no reverse proxy
+- `docker-compose.caddy.yml` — app behind Caddy with HTTP basic auth
+
+Both share the `cartoon-data` named volume, so you can switch variants without losing the DB. Secrets live in a `.env` file at the repo root (git-ignored, docker-ignored).
+
+### Bare-metal (`docker-compose.yml`)
+
+```yaml
+services:
+  app:
+    build: .
+    image: cartoon-archive:dev
+    container_name: cartoon-archive
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    volumes:
+      - cartoon-data:/app/data
+    environment:
+      Caption__ApiKey: ${OPENAI_API_KEY:-}
+
+volumes:
+  cartoon-data:
+```
+
+Run: `docker compose up -d`.
+
+* Named volume, not a bind mount. Bind mounts to `./data` hit WSL2 9P permission quirks between the host and the non-root `app` user (UID 1654) inside the container. A named volume avoids this — Docker inherits ownership from the image's `/app/data` (which the Dockerfile pre-chowns), so writes just work.
+* No `env_file` directive needed — Compose auto-loads `.env` from the same directory.
+* `Caption__ApiKey` uses the ASP.NET-style `__` section separator, which maps to `Caption:ApiKey` in configuration. Same pattern for anything else in `appsettings.json` you want to override per-environment.
+
+### Behind Caddy with basic auth (`docker-compose.caddy.yml`)
+
+The app is no longer exposed to the host — only Caddy is. Caddy handles TLS and protects everything with HTTP basic auth.
+
+```yaml
+services:
+  app:
+    build: .
+    image: cartoon-archive:dev
+    restart: unless-stopped
+    expose:
+      - "5000"
+    volumes:
+      - cartoon-data:/app/data
+    environment:
+      Caption__ApiKey: ${OPENAI_API_KEY:-}
+      Share__PublicBaseUrl: https://${SITE_HOST}
+    networks: [web]
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile.basicauth:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    environment:
+      SITE_HOST: ${SITE_HOST}
+      BASIC_AUTH_USER: ${BASIC_AUTH_USER}
+      BASIC_AUTH_HASH: ${BASIC_AUTH_HASH}
+    networks: [web]
+
+volumes:
+  cartoon-data:
+  caddy-data:
+  caddy-config:
+
+networks:
+  web:
+```
+
+Companion `Caddyfile.basicauth`:
+
+```
+{$SITE_HOST} {
+    basic_auth {
+        {$BASIC_AUTH_USER} {$BASIC_AUTH_HASH}
+    }
+    reverse_proxy app:5000
+}
+```
+
+Required `.env`:
+
+```
+SITE_HOST=cartoons.example.com
+BASIC_AUTH_USER=styx
+BASIC_AUTH_HASH=<bcrypt hash>
+OPENAI_API_KEY=sk-...
+```
+
+Generate the bcrypt hash with:
+
+```
+docker run --rm caddy:2-alpine caddy hash-password --plaintext 'yourpassword'
+```
+
+Run: `docker compose -f docker-compose.caddy.yml up -d`.
+
+* `expose: "5000"` (not `ports:`) publishes the port only to the Docker network, not the host. Only Caddy's 80/443 reach the outside.
+* Both services on a named `web` network — makes `app` resolvable as the hostname `app` inside the compose network.
+* `caddy-data` and `caddy-config` persist the ACME certificates and internal state. Without `caddy-data`, every restart re-issues certificates and will trip Let's Encrypt rate limits.
+* For local testing without a real domain, use `SITE_HOST=:8080` — Caddy skips ACME on non-domain addresses and serves plain HTTP on that port.
+* `Share__PublicBaseUrl` has to be set so share-link URLs point at the public HTTPS host, not the container's internal address.
+
+### Behind your own SSO reverse proxy
+
+If you already run an SSO reverse proxy (Authelia, Keycloak, oauth2-proxy, tinyauth, etc.), the app-side integration is just three env vars:
+
+```yaml
+environment:
+  Auth__Mode: ReverseProxy
+  Auth__HeaderName: Remote-User   # or whatever your SSO forwards
+  Share__PublicBaseUrl: https://cartoons.example.com
+```
+
+Your proxy config needs to:
+
+* Forward the identity header (`Remote-User` by default) on every request that isn't in the public allowlist.
+* Bypass auth for these paths, so anonymous share links and static assets still work: `/s/*`, `/css/*`, `/js/*`, `/lib/*`, `/favicon.ico` — kept in sync with `Auth/ReverseProxyAuthMiddleware.cs`.
+
+The app returns 401 if the header is missing on a protected path — it never falls back to a "guest" state.
+
+

@@ -1,0 +1,37 @@
+services:
+  app:
+    build: .
+    image: cartoon-archive:dev
+    restart: unless-stopped
+    expose:
+      - "5000"
+    volumes:
+      - cartoon-data:/app/data
+    environment:
+      Caption__ApiKey: ${OPENAI_API_KEY:-}
+      Share__PublicBaseUrl: https://${SITE_HOST}
+    networks: [web]
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile.basicauth:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    environment:
+      SITE_HOST: ${SITE_HOST}
+      BASIC_AUTH_USER: ${BASIC_AUTH_USER}
+      BASIC_AUTH_HASH: ${BASIC_AUTH_HASH}
+    networks: [web]
+
+volumes:
+  cartoon-data:
+  caddy-data:
+  caddy-config:
+
+networks:
+  web:

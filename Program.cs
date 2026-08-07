@@ -1,9 +1,12 @@
 using CartoonArchive.Api;
 using CartoonArchive.Auth;
 using CartoonArchive.Captioning;
+using CartoonArchive.Configuration;
 using CartoonArchive.Data;
 using CartoonArchive.Sharing;
 using CartoonArchive.Storage;
+using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Options;
@@ -16,6 +19,7 @@ builder.Services.Configure<AuthOptions>(builder.Configuration.GetSection(AuthOpt
 builder.Services.Configure<ShareOptions>(
     builder.Configuration.GetSection(ShareOptions.SectionName)
 );
+builder.Services.Configure<AppOptions>(builder.Configuration.GetSection(AppOptions.SectionName));
 
 // Add services to the container.
 builder.Services.AddRazorPages();
@@ -60,6 +64,14 @@ Directory.CreateDirectory(Path.Combine(builder.Environment.ContentRootPath, "dat
 Directory.CreateDirectory(Path.Combine(builder.Environment.ContentRootPath, "data", "images"));
 Directory.CreateDirectory(Path.Combine(builder.Environment.ContentRootPath, "data", "thumbnails"));
 
+// Persist DataProtection keys so antiforgery tokens and auth cookies survive container recreation.
+var dpKeysPath = Path.Combine(builder.Environment.ContentRootPath, "data", "dp-keys");
+Directory.CreateDirectory(dpKeysPath);
+builder
+    .Services.AddDataProtection()
+    .PersistKeysToFileSystem(new DirectoryInfo(dpKeysPath))
+    .SetApplicationName("CartoonArchive");
+
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.
@@ -70,6 +82,22 @@ if (!app.Environment.IsDevelopment())
     app.UseHsts();
 }
 
+var appOpts = builder.Configuration.GetSection(AppOptions.SectionName).Get<AppOptions>();
+if (appOpts?.TrustProxyHeaders == true)
+{
+    var fwd = new ForwardedHeadersOptions
+    {
+        ForwardedHeaders =
+            ForwardedHeaders.XForwardedFor
+            | ForwardedHeaders.XForwardedProto
+            | ForwardedHeaders.XForwardedHost,
+    };
+    // Clear the default localhost-only allowlist - the app should be only reachable
+    // via the proxy on an internal connection, so any upstream is trusted.
+    fwd.KnownIPNetworks.Clear();
+    fwd.KnownProxies.Clear();
+    app.UseForwardedHeaders(fwd);
+}
 app.UseHttpsRedirection();
 
 app.UseMiddleware<ReverseProxyAuthMiddleware>();

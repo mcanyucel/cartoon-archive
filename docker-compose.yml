@@ -1,0 +1,15 @@
+services:
+  app:
+    build: .
+    image: cartoon-archive:dev
+    container_name: cartoon-archive
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    volumes:
+      - cartoon-data:/app/data
+    environment:
+      Caption__ApiKey: ${OPENAI_API_KEY:-}
+
+volumes:
+  cartoon-data:
