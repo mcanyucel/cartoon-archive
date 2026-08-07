@@ -8,8 +8,6 @@ Written in ASP.NET Core, backed by SQLite (with FTS5), and packaged as a single 
 
 ## Screenshots
 
-Placeholders below. Replace each with a screenshot committed under `docs/`, for example `![Main archive view](docs/screenshot-main.png)`.
-
 #### Main archive view 
 ![Main archive view](docs/cartoon4.png)
 
