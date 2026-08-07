@@ -10,6 +10,8 @@ services:
     environment:
       Caption__ApiKey: ${OPENAI_API_KEY:-}
       Share__PublicBaseUrl: https://${SITE_HOST}
+      Auth__Mode: ${AUTH_MODE:-None}
+      Auth__HeaderName: ${AUTH_HEADER_NAME:-X-Remote-User}
     networks: [web]
 
   caddy:

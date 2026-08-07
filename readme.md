@@ -41,6 +41,9 @@ services:
       - cartoon-data:/app/data
     environment:
       Caption__ApiKey: ${OPENAI_API_KEY:-}
+      Auth__Mode: ${AUTH_MODE:-None}
+      Auth__HeaderName: ${AUTH_HEADER_NAME:-X-Remote-User}
+      Share__PublicBaseUrl: ${SHARE_PUBLIC_BASE_URL:-}
 
 volumes:
   cartoon-data:
@@ -69,6 +72,8 @@ services:
     environment:
       Caption__ApiKey: ${OPENAI_API_KEY:-}
       Share__PublicBaseUrl: https://${SITE_HOST}
+      Auth__Mode: ${AUTH_MODE:-None}
+      Auth__HeaderName: ${AUTH_HEADER_NAME:-X-Remote-User}
     networks: [web]
 
   caddy:
@@ -132,13 +137,12 @@ Run with `docker compose -f docker-compose.caddy.yml up -d`.
 
 ### Behind your own SSO reverse proxy
 
-If you already run an SSO reverse proxy (Authelia, Keycloak, oauth2-proxy, tinyauth, and so on), the app-side integration is just three env vars:
+If you already run an SSO reverse proxy (Authelia, Keycloak, oauth2-proxy, tinyauth, and so on), no extra compose file is needed. Set three values in `.env` and use the bare-metal compose (put your own proxy in front of port 5000):
 
-```yaml
-environment:
-  Auth__Mode: ReverseProxy
-  Auth__HeaderName: Remote-User   # or whatever your SSO forwards
-  Share__PublicBaseUrl: https://cartoons.example.com
+```
+AUTH_MODE=ReverseProxy
+AUTH_HEADER_NAME=Remote-User          # or whatever your SSO forwards
+SHARE_PUBLIC_BASE_URL=https://cartoons.example.com
 ```
 
 Your proxy config needs to:

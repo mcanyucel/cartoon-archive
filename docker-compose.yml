@@ -10,6 +10,9 @@ services:
       - cartoon-data:/app/data
     environment:
       Caption__ApiKey: ${OPENAI_API_KEY:-}
+      Auth__Mode: ${AUTH_MODE:-None}
+      Auth__HeaderName: ${AUTH_HEADER_NAME:-X-Remote-User}
+      Share__PublicBaseUrl: ${SHARE_PUBLIC_BASE_URL:-}
 
 volumes:
   cartoon-data:
