@@ -41,6 +41,7 @@ Search runs over the captions rather than filenames or a manual tag system, whic
 Under the hood this is SQLite FTS5 with the `unicode61` tokenizer and `remove_diacritics 2`. The practical effect:
 
 * Diacritics are transparent across Latin scripts. Searching for "yalniz" matches "yanlız" (Turkish), "uber" matches "über" (German), "cafe" matches "café" (French). You do not need to know which language a caption was written in to find it.
+* Prefix matching on every term. Searching `firavun` also finds captions with `firavunun`, `firavuna`, `firavundan` - helpful for Turkish and other suffix-heavy languages where declined and inflected forms would otherwise missed. Root-changing suffixes (`kitap` -> `kitabı`) still slips through; retry with the actual root.
 * Case is ignored.
 * Matching terms in the caption text are highlighted in the search results so you can see at a glance why a given item came back.
 

@@ -205,9 +205,7 @@ public static class ImageEndpoints
             )
             .ToDictionaryAsync(x => x.Id, x => SafeSnippet(x.Snippet), ct);
 
-        return Results.Ok(
-            cartoons.Select(c => ToResponse(c, snippets.GetValueOrDefault(c.Id)))
-        );
+        return Results.Ok(cartoons.Select(c => ToResponse(c, snippets.GetValueOrDefault(c.Id))));
     }
 
     private sealed class SnippetRow
@@ -224,16 +222,19 @@ public static class ImageEndpoints
 
     /// <summary>
     /// Turn user input into a safe FTS5 MATCH expression:
-    ///     input: batman robin
-    ///     output: "batman" "robin" (implicit AND; each token is a literal phrase)
+    ///     input: firavun robin
+    ///     output: "firavun" * "robin" * (implicit AND; each token is a literal phrase)
     /// Quoting each token neutralizes FTS5 syntax chars (":", "()", operator words, etc.)
+    /// The trailing `*` is FTS5's prefix operator - it makes 'firavun' also match Turkish declined and inflated words
+    /// such as 'firavunun' 'firavuna' 'firavundan'.
+    /// Note that it cannot handle stem changes and reverse search (finding stem from a declined word)
     /// </summary>
     private static string BuildFtsMatch(string q)
     {
         var tokens = q.Split(new[] { ' ', '\t', '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries)
             .Select(t => t.Replace("\"", "")) // double-quote is the only char we can't escape inside a phrase
             .Where(t => t.Length > 0)
-            .Select(t => $"\"{t}\"");
+            .Select(t => $"\"{t}\" *");
 
         return string.Join(" ", tokens);
     }
@@ -346,9 +347,7 @@ public static class ImageEndpoints
         if (!string.IsNullOrEmpty(language))
         {
             if (language.Length > 16)
-                return Results.BadRequest(
-                    new { error = "Language must be under 16 characters." }
-                );
+                return Results.BadRequest(new { error = "Language must be under 16 characters." });
             cartoon.Language = language;
         }
 

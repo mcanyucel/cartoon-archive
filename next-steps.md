@@ -4,7 +4,7 @@ A loose backlog of things worth doing later. Order is a rough personal priority,
 
 ## User-facing features
 
-### Turkish morphology: prefix matching in search
+### DONE: Turkish morphology: prefix matching in search
 
 FTS5 treats inflected forms as separate tokens, so searching `firavun` misses captions containing `firavunun`, `firavuna`, `firavundan`, etc. Turkish is agglutinative and suffix-heavy, so this bites often in practice.
 
