@@ -17,7 +17,7 @@ function renderGallery(cartoons) {
     gallery.innerHTML = '<p class="text-muted">No images yet.</p>';
     return;
   }
-  gallery.innerHTML = cartoons.map(CartoonCard.renderCard).join("");
+  gallery.innerHTML = CartoonCard.renderList(cartoons);
 }
 
 function renderPager(page, pageSize, total) {

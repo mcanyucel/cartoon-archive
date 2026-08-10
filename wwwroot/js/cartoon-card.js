@@ -5,6 +5,10 @@ window.CartoonCard = (function () {
 
   const cache = new Map();
   let currentCartoon = null;
+  // Ids in display order — populated by renderList, consumed by lightbox
+  // prev/next navigation. Kept separate from the cache Map because the cache
+  // survives across re-renders and stale entries would poison the ordering.
+  let currentOrder = [];
 
   function escapeHtml(str) {
     return String(str)
@@ -50,6 +54,12 @@ window.CartoonCard = (function () {
               <p class="text-muted mb-0 mt-1">Uploaded ${escapeHtml(formatUploadedAt(c.uploadedAt))}</p>
           </details>
       `;
+  }
+
+  function renderList(cartoons) {
+    cache.clear();
+    currentOrder = cartoons.map((c) => c.id);
+    return cartoons.map(renderCard).join("");
   }
 
   function renderCard(c) {
@@ -204,6 +214,38 @@ window.CartoonCard = (function () {
     if (regenerating) controls.classList.add("d-none");
   }
 
+  // Warm the browser cache for the immediate neighbors so arrow-key
+  // navigation feels instant instead of blank-frame-then-image.
+  function preloadNeighbors(index) {
+    for (const delta of [-1, 1]) {
+      const id = currentOrder[index + delta];
+      if (!id) continue;
+      const neighbor = cache.get(id);
+      if (neighbor?.imageUrl) {
+        const img = new Image();
+        img.src = neighbor.imageUrl;
+      }
+    }
+  }
+
+  function navigate(delta) {
+    if (!currentCartoon) return;
+    const idx = currentOrder.indexOf(currentCartoon.id);
+    if (idx === -1) return;
+    const nextIdx = idx + delta;
+    if (nextIdx < 0 || nextIdx >= currentOrder.length) return;
+    const next = cache.get(currentOrder[nextIdx]);
+    if (next) openLightbox(next);
+  }
+
+  function updateNavButtons(modal) {
+    const prevBtn = modal.querySelector("#cartoon-lightbox-prev");
+    const nextBtn = modal.querySelector("#cartoon-lightbox-next");
+    const idx = currentCartoon ? currentOrder.indexOf(currentCartoon.id) : -1;
+    if (prevBtn) prevBtn.disabled = idx <= 0;
+    if (nextBtn) nextBtn.disabled = idx === -1 || idx >= currentOrder.length - 1;
+  }
+
   function openLightbox(c) {
     const modal = document.getElementById("cartoon-lightbox");
     if (!modal || typeof bootstrap === "undefined") return;
@@ -219,6 +261,9 @@ window.CartoonCard = (function () {
     setConfirmMode(modal, false);
     setEditMode(modal, false);
     setRegenMode(modal, false);
+    updateNavButtons(modal);
+    const idx = currentOrder.indexOf(c.id);
+    if (idx !== -1) preloadNeighbors(idx);
 
     // Edit + Regenerate are only meaningful for Ready cartoons.
     const descControls = modal.querySelector("#cartoon-lightbox-desc-controls");
@@ -269,6 +314,8 @@ window.CartoonCard = (function () {
     const confirmBtn = modal.querySelector("#cartoon-lightbox-delete-confirm");
     const cancelBtn = modal.querySelector("#cartoon-lightbox-delete-cancel");
     const shareBtn = modal.querySelector("#cartoon-lightbox-share");
+    const prevBtn = modal.querySelector("#cartoon-lightbox-prev");
+    const nextBtn = modal.querySelector("#cartoon-lightbox-next");
     const editBtn = modal.querySelector("#cartoon-lightbox-edit");
     const editText = modal.querySelector("#cartoon-lightbox-edit-text");
     const editSave = modal.querySelector("#cartoon-lightbox-edit-save");
@@ -302,7 +349,29 @@ window.CartoonCard = (function () {
 
     cancelBtn?.addEventListener("click", () => setConfirmMode(modal, false));
 
+    prevBtn?.addEventListener("click", () => navigate(-1));
+    nextBtn?.addEventListener("click", () => navigate(1));
+
+    // Left/right arrows navigate; ignore when the user is typing in the
+    // edit textarea or regen select so keystrokes don't get hijacked.
+    function onKeydown(event) {
+      const t = event.target;
+      if (t && (t.tagName === "TEXTAREA" || t.tagName === "INPUT" || t.tagName === "SELECT"))
+        return;
+      if (event.key === "ArrowLeft") {
+        event.preventDefault();
+        navigate(-1);
+      } else if (event.key === "ArrowRight") {
+        event.preventDefault();
+        navigate(1);
+      }
+    }
+
+    modal.addEventListener("shown.bs.modal", () =>
+      document.addEventListener("keydown", onKeydown),
+    );
     modal.addEventListener("hidden.bs.modal", () => {
+      document.removeEventListener("keydown", onKeydown);
       setConfirmMode(modal, false);
       setEditMode(modal, false);
       setRegenMode(modal, false);
@@ -446,6 +515,7 @@ window.CartoonCard = (function () {
     formatUploadedAt,
     renderBody,
     renderCard,
+    renderList,
     attachRetryHandler,
     attachLightboxHandler,
     attachShareHandler,

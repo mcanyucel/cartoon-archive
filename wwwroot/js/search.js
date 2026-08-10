@@ -12,7 +12,7 @@ function renderResults(cartoons) {
     results.innerHTML = '<p class="text-muted">No matches.</p>';
     return;
   }
-  results.innerHTML = cartoons.map(CartoonCard.renderCard).join("");
+  results.innerHTML = CartoonCard.renderList(cartoons);
 }
 
 async function loadResults() {

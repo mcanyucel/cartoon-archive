@@ -24,20 +24,14 @@ The archive index is paginated (numbered pages, 24 per page, `?page=N` in the UR
 
 The other open design call is **interaction with lightbox navigation (below).** "Next" inside the lightbox should walk across page boundaries transparently, which means the frontend needs either the current page's list plus a fetch-neighbors call at the edges, or a slimmer id-only list of the whole result set cached on open.
 
-### Lightbox navigation (prev/next + keyboard arrows)
+### Lightbox navigation: cross-page walk and deep links
 
-Right now clicking an image opens the detail view for that one item, and viewing another one means going back to the archive. Turn the lightbox into a browsing surface instead:
+Lightbox has prev/next chevrons on the image edges, left/right arrow keys, and preloads the immediate neighbors. "Next" is whichever list rendered the grid — the gallery for `/`, the search results for `/Search?q=…` — so context comes for free from what's on screen.
 
-* On-screen prev/next affordances on the left and right edges of the lightbox.
-* Keyboard: left and right arrow keys to move between items, escape to close (if it is not already wired).
-* Preload the immediate neighbors (one or two in each direction) so arrow presses feel instant instead of blank-frame-then-image.
+Two open follow-ups:
 
-Design calls to make:
-
-* **What defines "next"?** The natural answer is: whichever list brought you here. If you clicked from a search results view, next means the next matching item; if you clicked from the main archive, next means the next by upload order. This implies the lightbox needs to know its parent context, either via a query string on the item URL or a small in-memory list cached in the SPA-ish frontend state.
-* **URL sync.** Update the address bar as the user navigates so a refresh or a shared link lands on the currently-viewed image, not the one they originally opened. `history.replaceState` on each transition, no full navigation.
-
-Small feature, big quality-of-life boost once the archive has more than a screenful of items.
+* **Walk across page boundaries.** Right now the buttons stop at the first/last item on the current page. Making "next" past the last item auto-load the next page (and prepend/append to the in-memory order) would remove the only rough edge in the UX. Needs either eager id-only prefetch of the full result set on lightbox open, or lazy "load next page when navigation crosses the boundary" logic in the client.
+* **URL sync for deep links.** Update the address bar as the user navigates so a refresh or a shared link lands on the currently-viewed image. `history.replaceState` on each transition is the easy part; the harder part is teaching the gallery/search pages to open the lightbox on load when the URL points at an item id.
 
 ### Installable as an app (PWA manifest + service worker)
 
