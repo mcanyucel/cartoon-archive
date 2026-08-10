@@ -4,6 +4,51 @@ A loose backlog of things worth doing later. Order is a rough personal priority,
 
 ## User-facing features
 
+### Turkish morphology: prefix matching in search
+
+FTS5 treats inflected forms as separate tokens, so searching `firavun` misses captions containing `firavunun`, `firavuna`, `firavundan`, etc. Turkish is agglutinative and suffix-heavy, so this bites often in practice.
+
+Fix: in the search query builder, append `*` to each user-entered term before handing it to FTS5. `firavun` becomes `firavun*`, which FTS5 already supports as a prefix query. One-line change, no reindex, no extension.
+
+Accepted trade-offs (documented so they do not come back as surprises later):
+
+* Does not help the reverse case: searching `firavunun` when the caption only has `firavun`. Rare in practice.
+* Does not handle stem-changing suffixes (vowel harmony edge cases, consonant softening like `kitap` → `kitabı`). Understandable failures; retry with a shorter root.
+* Slightly noisier matches when a short query term happens to be a prefix of an unrelated longer word (e.g., `ad` matches `adam`, `adaylar`). Mitigate with a minimum term length before appending `*` if it becomes annoying.
+
+If this ever stops being enough, the next step is a Snowball Turkish stemmer as an FTS5 tokenizer — both index and query stem to a common root, which fixes both directions and stem changes. Requires shipping a compiled SQLite extension with the .NET app plus a full reindex.
+
+### Pagination on the archive index
+
+The index currently loads nearly every item at once, which was tolerable at small sizes but already makes cold loads noticeably heavy and only gets worse as the archive grows. Go with **numbered pages** rather than infinite scroll: content changes rarely, so bookmarkability, shareable links, and "know where you are" matter more than the smooth-feed feel of IS.
+
+Sketch:
+
+* Server-side paging on the index query with `Skip`/`Take`; page size around 24-48 so it fills a couple of rows on desktop without a huge payload.
+* Page number in the URL as `?page=N` so refresh, browser back/forward, and shared links all resolve to the same view. Default to page 1 when absent, clamp out-of-range values.
+* Pager component at the bottom: first, prev, next, last, plus a small window of numeric links around the current page. Reuse the same component on the search results view.
+* Total count query (`COUNT(*)`) alongside the page fetch so the pager can render the last-page link. Cheap on SQLite for anything under six figures.
+
+Design calls to make:
+
+* **Whether search results paginate too, or stay as a single scroll.** Consistency argues for both paginating, but search results are often short enough that a single page is fine. Worth deciding once real usage shows how many results a typical query returns.
+* **Interaction with lightbox navigation (below).** "Next" inside the lightbox should walk across page boundaries transparently, which means the frontend needs either the current page's list plus a fetch-neighbors call at the edges, or a slimmer id-only list of the whole result set cached on open.
+
+### Lightbox navigation (prev/next + keyboard arrows)
+
+Right now clicking an image opens the detail view for that one item, and viewing another one means going back to the archive. Turn the lightbox into a browsing surface instead:
+
+* On-screen prev/next affordances on the left and right edges of the lightbox.
+* Keyboard: left and right arrow keys to move between items, escape to close (if it is not already wired).
+* Preload the immediate neighbors (one or two in each direction) so arrow presses feel instant instead of blank-frame-then-image.
+
+Design calls to make:
+
+* **What defines "next"?** The natural answer is: whichever list brought you here. If you clicked from a search results view, next means the next matching item; if you clicked from the main archive, next means the next by upload order. This implies the lightbox needs to know its parent context, either via a query string on the item URL or a small in-memory list cached in the SPA-ish frontend state.
+* **URL sync.** Update the address bar as the user navigates so a refresh or a shared link lands on the currently-viewed image, not the one they originally opened. `history.replaceState` on each transition, no full navigation.
+
+Small feature, big quality-of-life boost once the archive has more than a screenful of items.
+
 ### Installable as an app (PWA manifest + service worker)
 
 Make the archive installable on desktop and mobile so it launches like a native app instead of just a browser tab. Two small pieces:
@@ -25,21 +70,6 @@ Sketch: `Tag` table with a many-to-many join to `Cartoons`. Two design calls to 
 
 * Whether tag text goes into the FTS index (so `#turkish` shows up when searching "turkish"), or stays as a separate filter that ANDs with the search query. The second is cleaner but less discoverable.
 * Whether tags are freeform or come from a controlled list. Freeform is easier but eventually collects `#favorite`, `#favourite`, `#fav` all pointing at the same intent.
-
-### Lightbox navigation (prev/next + keyboard arrows)
-
-Right now clicking an image opens the detail view for that one item, and viewing another one means going back to the archive. Turn the lightbox into a browsing surface instead:
-
-* On-screen prev/next affordances on the left and right edges of the lightbox.
-* Keyboard: left and right arrow keys to move between items, escape to close (if it is not already wired).
-* Preload the immediate neighbors (one or two in each direction) so arrow presses feel instant instead of blank-frame-then-image.
-
-Design calls to make:
-
-* **What defines "next"?** The natural answer is: whichever list brought you here. If you clicked from a search results view, next means the next matching item; if you clicked from the main archive, next means the next by upload order. This implies the lightbox needs to know its parent context, either via a query string on the item URL or a small in-memory list cached in the SPA-ish frontend state.
-* **URL sync.** Update the address bar as the user navigates so a refresh or a shared link lands on the currently-viewed image, not the one they originally opened. `history.replaceState` on each transition, no full navigation.
-
-Small feature, big quality-of-life boost once the archive has more than a screenful of items.
 
 ### Bulk operations
 
