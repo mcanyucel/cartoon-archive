@@ -152,15 +152,35 @@ public static class ImageEndpoints
         );
     }
 
-    private static async Task<IResult> HandleList(CartoonArchiveDbContext db, CancellationToken ct)
+    private const int DefaultPageSize = 24;
+    private const int MaxPageSize = 100;
+
+    private static async Task<IResult> HandleList(
+        [FromQuery] int? page,
+        [FromQuery] int? pageSize,
+        CartoonArchiveDbContext db,
+        CancellationToken ct
+    )
     {
-        var cartoons = await db
-            .Cartoons.OrderByDescending(c => c.Id) // SQLite cannot sort by DateTimeOffset. Id should be auto-incrementing anyways
-            .Take(200)
+        var p = Math.Max(1, page ?? 1);
+        var size = Math.Clamp(pageSize ?? DefaultPageSize, 1, MaxPageSize);
+
+        var query = db.Cartoons.OrderByDescending(c => c.Id); // SQLite cannot sort by DateTimeOffset. Id should be auto-incrementing anyways
+        var total = await query.CountAsync(ct);
+
+        var cartoons = await query
+            .Skip((p - 1) * size)
+            .Take(size)
             .AsNoTracking()
             .ToListAsync(ct);
 
-        return Results.Ok(cartoons.Select(c => ToResponse(c)));
+        return Results.Ok(new
+        {
+            items = cartoons.Select(c => ToResponse(c)),
+            page = p,
+            pageSize = size,
+            total,
+        });
     }
 
     private static async Task<IResult> HandleSearch(

@@ -18,21 +18,11 @@ Accepted trade-offs (documented so they do not come back as surprises later):
 
 If this ever stops being enough, the next step is a Snowball Turkish stemmer as an FTS5 tokenizer — both index and query stem to a common root, which fixes both directions and stem changes. Requires shipping a compiled SQLite extension with the .NET app plus a full reindex.
 
-### Pagination on the archive index
+### Pagination on search results
 
-The index currently loads nearly every item at once, which was tolerable at small sizes but already makes cold loads noticeably heavy and only gets worse as the archive grows. Go with **numbered pages** rather than infinite scroll: content changes rarely, so bookmarkability, shareable links, and "know where you are" matter more than the smooth-feed feel of IS.
+The archive index is paginated (numbered pages, 24 per page, `?page=N` in the URL). Search results still return everything in one shot, capped at 200. Worth revisiting once real usage shows how many results a typical query returns — most searches will be short enough to leave as-is, but a broad "cat" query on a big archive would benefit from the same pager. The client-side pager renderer in `wwwroot/js/gallery.js` is a straightforward lift into a shared helper when the time comes.
 
-Sketch:
-
-* Server-side paging on the index query with `Skip`/`Take`; page size around 24-48 so it fills a couple of rows on desktop without a huge payload.
-* Page number in the URL as `?page=N` so refresh, browser back/forward, and shared links all resolve to the same view. Default to page 1 when absent, clamp out-of-range values.
-* Pager component at the bottom: first, prev, next, last, plus a small window of numeric links around the current page. Reuse the same component on the search results view.
-* Total count query (`COUNT(*)`) alongside the page fetch so the pager can render the last-page link. Cheap on SQLite for anything under six figures.
-
-Design calls to make:
-
-* **Whether search results paginate too, or stay as a single scroll.** Consistency argues for both paginating, but search results are often short enough that a single page is fine. Worth deciding once real usage shows how many results a typical query returns.
-* **Interaction with lightbox navigation (below).** "Next" inside the lightbox should walk across page boundaries transparently, which means the frontend needs either the current page's list plus a fetch-neighbors call at the edges, or a slimmer id-only list of the whole result set cached on open.
+The other open design call is **interaction with lightbox navigation (below).** "Next" inside the lightbox should walk across page boundaries transparently, which means the frontend needs either the current page's list plus a fetch-neighbors call at the edges, or a slimmer id-only list of the whole result set cached on open.
 
 ### Lightbox navigation (prev/next + keyboard arrows)
 
