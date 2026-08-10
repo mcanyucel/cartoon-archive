@@ -16,6 +16,11 @@
     <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/CartoonArchive.styles.css" asp-append-version="true" />
+    <link rel="icon" href="~/favicon.ico" sizes="any" />
+    <link rel="icon" type="image/png" sizes="96x96" href="~/favicon-96x96.png" />
+    <link rel="apple-touch-icon" href="~/apple-touch-icon.png" />
+    <link rel="manifest" href="~/manifest.json" />
+    <meta name="theme-color" content="#0d6efd" />
 </head>
 <body>
     <header>
@@ -129,5 +134,12 @@
     <script src="~/js/site.js" asp-append-version="true"></script>
 
     @await RenderSectionAsync("Scripts", required: false)
+        <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/sw.js').catch(() => { /* non-fatal */ });
+            });
+        }
+    </script>
 </body>
 </html>

@@ -67,9 +67,11 @@ window.CartoonCard = (function () {
                 <div class="card-body p-2">
                     <div class="d-flex justify-content-between align-items-center mb-1">
                         <span class="badge bg-secondary">${escapeHtml(c.language)}</span>
-                        ${c.status === STATUS_READY
-                          ? `<button type="button" class="btn btn-link btn-sm p-0" data-action="share">Share</button>`
-                          : ""}
+                        ${
+                          c.status === STATUS_READY
+                            ? `<button type="button" class="btn btn-link btn-sm p-0" data-action="share">Share</button>`
+                            : ""
+                        }
                     </div>
                     ${renderBody(c)}
                 </div>
@@ -82,21 +84,50 @@ window.CartoonCard = (function () {
     if (onMessage) onMessage("", "");
     if (button) button.disabled = true;
     try {
-      const response = await fetch(`/api/images/${id}/share`, { method: "POST" });
+      const response = await fetch(`/api/images/${id}/share`, {
+        method: "POST",
+      });
       if (!response.ok) {
         const err = await response.json().catch(() => ({}));
         if (onMessage)
-          onMessage(`Share failed: ${err.error ?? response.statusText}`, "text-danger");
+          onMessage(
+            `Share failed: ${err.error ?? response.statusText}`,
+            "text-danger",
+          );
         return;
       }
       const { url, expiresAt } = await response.json();
+      const mins = Math.max(
+        1,
+        Math.round((new Date(expiresAt) - new Date()) / 60000),
+      );
+
+      // Prefer the native OS share sheet when the browser supports it.
+      // On installed PWAs (iOS/Android) this opens Messages/WhatsApp/etc.
+      if (navigator.share) {
+        try {
+          await navigator.share({
+            title: "Karikatür Arşivi",
+            text: `Expires in ${mins} min`,
+            url,
+          });
+          if (onMessage)
+            onMessage(`Shared — link expires in ${mins} min`, "text-success");
+          return;
+        } catch (e) {
+          // User closed the share sheet — treat as a no-op, don't fall through.
+          if (e.name === "AbortError") {
+            if (onMessage) onMessage("", "");
+            return;
+          }
+          // Any other error → fall through to the clipboard fallback below.
+        }
+      }
+
       try {
         await navigator.clipboard.writeText(url);
-        const mins = Math.max(
-          1,
-          Math.round((new Date(expiresAt) - new Date()) / 60000)
-        );
-        if (onMessage) onMessage(`Link copied — expires in ${mins} min`, "text-success");
+        if (onMessage)
+          onMessage(`Link copied — expires in ${mins} min`, "text-success");
       } catch {
         if (onMessage) onMessage(`Copy failed. URL: ${url}`, "text-muted");
       }
@@ -129,13 +160,16 @@ window.CartoonCard = (function () {
       button.disabled = true;
       if (onError) onError("");
       try {
-        const response = await fetch(`/api/images/${id}/retry`, { method: "POST" });
+        const response = await fetch(`/api/images/${id}/retry`, {
+          method: "POST",
+        });
         if (response.ok) {
           if (onSuccess) await onSuccess();
         } else {
           button.disabled = false;
           const err = await response.json().catch(() => ({}));
-          if (onError) onError(`Retry failed: ${err.error ?? response.statusText}`);
+          if (onError)
+            onError(`Retry failed: ${err.error ?? response.statusText}`);
         }
       } catch (e) {
         button.disabled = false;
@@ -188,12 +222,15 @@ window.CartoonCard = (function () {
 
     // Edit + Regenerate are only meaningful for Ready cartoons.
     const descControls = modal.querySelector("#cartoon-lightbox-desc-controls");
-    if (descControls) descControls.classList.toggle("d-none", c.status !== STATUS_READY);
+    if (descControls)
+      descControls.classList.toggle("d-none", c.status !== STATUS_READY);
 
     modal.querySelector("#cartoon-lightbox-image").src = c.imageUrl;
     modal.querySelector("#cartoon-lightbox-image").alt = c.description ?? "";
-    modal.querySelector("#cartoon-lightbox-title").textContent = c.originalFileName ?? "";
-    modal.querySelector("#cartoon-lightbox-language").textContent = c.language ?? "";
+    modal.querySelector("#cartoon-lightbox-title").textContent =
+      c.originalFileName ?? "";
+    modal.querySelector("#cartoon-lightbox-language").textContent =
+      c.language ?? "";
 
     const descEl = modal.querySelector("#cartoon-lightbox-description");
     if (c.status === STATUS_PENDING) {
@@ -309,7 +346,10 @@ window.CartoonCard = (function () {
           setMessage("Description saved.", "text-success");
         } else {
           const err = await response.json().catch(() => ({}));
-          setMessage(`Save failed: ${err.error ?? response.statusText}`, "text-danger");
+          setMessage(
+            `Save failed: ${err.error ?? response.statusText}`,
+            "text-danger",
+          );
         }
       } catch (e) {
         setMessage(`Save failed: ${e.message}`, "text-danger");
@@ -351,7 +391,10 @@ window.CartoonCard = (function () {
           if (onAfterDelete) await onAfterDelete();
         } else {
           const err = await response.json().catch(() => ({}));
-          setMessage(`Regenerate failed: ${err.error ?? response.statusText}`, "text-danger");
+          setMessage(
+            `Regenerate failed: ${err.error ?? response.statusText}`,
+            "text-danger",
+          );
         }
       } catch (e) {
         setMessage(`Regenerate failed: ${e.message}`, "text-danger");
@@ -369,7 +412,9 @@ window.CartoonCard = (function () {
       if (cancelBtn) cancelBtn.disabled = true;
 
       try {
-        const response = await fetch(`/api/images/${c.id}`, { method: "DELETE" });
+        const response = await fetch(`/api/images/${c.id}`, {
+          method: "DELETE",
+        });
         if (response.ok) {
           cache.delete(c.id);
           currentCartoon = null;
@@ -377,7 +422,10 @@ window.CartoonCard = (function () {
           if (onAfterDelete) await onAfterDelete();
         } else {
           const err = await response.json().catch(() => ({}));
-          setMessage(`Delete failed: ${err.error ?? response.statusText}`, "text-danger");
+          setMessage(
+            `Delete failed: ${err.error ?? response.statusText}`,
+            "text-danger",
+          );
           setConfirmMode(modal, false);
         }
       } catch (e) {

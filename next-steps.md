@@ -51,12 +51,7 @@ Small feature, big quality-of-life boost once the archive has more than a screen
 
 ### Installable as an app (PWA manifest + service worker)
 
-Make the archive installable on desktop and mobile so it launches like a native app instead of just a browser tab. Two small pieces:
-
-* **Web app manifest** (`wwwroot/manifest.json`): icons, theme colors, display mode (`standalone`), start URL. This is what triggers the browser's "Add to Home Screen" prompt.
-* **Service worker**: register a minimal one from `_Layout.cshtml` that caches the app shell (HTML, CSS, JS, favicon). Even without offline write support, this alone is enough to make the install experience work and speeds up cold loads. Real offline write is not worth chasing for a personal archive.
-
-Reference points inside the current project: manifest goes next to `favicon.ico` and needs a `<link rel="manifest">` in the layout. Icons at 192x192 and 512x512 are the two Chrome insists on.
+The archive is now installable and can share out to the native OS share sheet. The natural next step is to also register as a share *target* via `share_target` in `manifest.json`, so images shared *to* the installed PWA from other apps (Photos, Gallery, WhatsApp) land as uploads. Bigger change — needs an endpoint that accepts `POST /share-target` with a form-encoded file — but it turns the archive into a proper "send it here" destination on the phone. 
 
 ### Tags
 
