@@ -238,6 +238,52 @@ window.CartoonCard = (function () {
     if (next) openLightbox(next);
   }
 
+  // Horizontal swipe on the image area advances the lightbox. Threshold-based
+  // so vertical scrolling and pinch-zoom pass through untouched.
+  const SWIPE_MIN_DX = 50;
+  function attachSwipe(element) {
+    let startX = 0;
+    let startY = 0;
+    let tracking = false;
+
+    element.addEventListener(
+      "touchstart",
+      (e) => {
+        if (e.touches.length !== 1) {
+          tracking = false;
+          return;
+        }
+        tracking = true;
+        startX = e.touches[0].clientX;
+        startY = e.touches[0].clientY;
+      },
+      { passive: true },
+    );
+
+    element.addEventListener(
+      "touchend",
+      (e) => {
+        if (!tracking) return;
+        tracking = false;
+        const t = e.changedTouches[0];
+        const dx = t.clientX - startX;
+        const dy = t.clientY - startY;
+        if (Math.abs(dx) < SWIPE_MIN_DX) return;
+        if (Math.abs(dy) > Math.abs(dx)) return;
+        navigate(dx < 0 ? 1 : -1);
+      },
+      { passive: true },
+    );
+
+    element.addEventListener(
+      "touchcancel",
+      () => {
+        tracking = false;
+      },
+      { passive: true },
+    );
+  }
+
   function updateNavButtons(modal) {
     const prevBtn = modal.querySelector("#cartoon-lightbox-prev");
     const nextBtn = modal.querySelector("#cartoon-lightbox-next");
@@ -351,6 +397,9 @@ window.CartoonCard = (function () {
 
     prevBtn?.addEventListener("click", () => navigate(-1));
     nextBtn?.addEventListener("click", () => navigate(1));
+
+    const imgWrap = modal.querySelector(".cartoon-lightbox-image-wrap");
+    if (imgWrap) attachSwipe(imgWrap);
 
     // Left/right arrows navigate; ignore when the user is typing in the
     // edit textarea or regen select so keystrokes don't get hijacked.
