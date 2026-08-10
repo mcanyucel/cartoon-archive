@@ -186,10 +186,24 @@ Companion `Caddyfile.basicauth`:
 
 ```
 {$SITE_HOST} {
-    basic_auth {
-        {$BASIC_AUTH_USER} {$BASIC_AUTH_HASH}
+    # PWA and favicon assets are public metadata that browsers fetch
+    # WITHOUT credentials (link rel=manifest, apple-touch-icon, icon PNGs
+    # referenced from the manifest, the SW file). basic_auth would 401
+    # them and silently break PWA install, so exempt them here.
+    # Wildcards also cover the fingerprinted variants that MapStaticAssets
+    # emits from tag helpers (e.g. /manifest.49ong59m6e.json for cache-busting).
+    @pwa path /manifest*.json /sw.js /favicon*.ico /favicon-*.png /favicon*.svg /apple-touch-icon*.png /web-app-manifest-*.png
+
+    handle @pwa {
+        reverse_proxy app:5000
     }
-    reverse_proxy app:5000
+
+    handle {
+        basic_auth {
+            {$BASIC_AUTH_USER} {$BASIC_AUTH_HASH}
+        }
+        reverse_proxy app:5000
+    }
 }
 ```
 
@@ -215,6 +229,8 @@ Run with `docker compose -f docker-compose.caddy.yml up -d`.
 * `caddy-data` and `caddy-config` persist ACME certificates and internal state. Without `caddy-data`, every restart re-issues certificates and will trip Let's Encrypt rate limits.
 * For local testing without a real domain, use `SITE_HOST=:8080`. Caddy skips ACME on non-domain addresses and serves plain HTTP on that port.
 * `Share__PublicBaseUrl` has to be set so share-link URLs point at the public HTTPS host, not the container's internal address.
+* The `@pwa` matcher exempts manifest, service worker, and favicon/PWA icon paths from `basic_auth`. Browsers fetch these without credentials by default (for `<link rel="manifest">`, `<link rel="apple-touch-icon">`, and icon URLs listed inside the manifest itself), so leaving them behind basic auth returns 401 and makes the browser silently refuse to install the PWA — DevTools shows "NetworkError" on the manifest. The app-side allowlist in `Auth/ReverseProxyAuthMiddleware.cs` covers the same paths for the same reason.
+* The wildcards in the matcher (`/manifest*.json`, `/favicon*.ico`, etc.) also catch the fingerprinted variants that `MapStaticAssets` emits from Razor tag helpers — `~/manifest.json` renders as `/manifest.49ong59m6e.json` for cache-busting, and the plain path is no longer what the browser asks for. The app middleware strips this fingerprint before matching its allowlist.
 
 ### Behind your own SSO reverse proxy
 
@@ -229,7 +245,7 @@ SHARE_PUBLIC_BASE_URL=https://cartoons.example.com
 Your proxy config needs to:
 
 * Forward the identity header (`Remote-User` by default) on every request that is not in the public allowlist.
-* Bypass auth for these paths, so anonymous share links and static assets still work: `/s/*`, `/css/*`, `/js/*`, `/lib/*`, `/favicon.ico`. The list is kept in sync with `Auth/ReverseProxyAuthMiddleware.cs`.
+* Bypass auth for these paths, so anonymous share links, static assets, and PWA install work: `/s/*`, `/css/*`, `/js/*`, `/lib/*`, `/manifest*.json`, `/sw.js`, `/favicon*.ico`, `/favicon-*.png`, `/favicon*.svg`, `/apple-touch-icon*.png`, `/web-app-manifest-*.png`. The list is kept in sync with `Auth/ReverseProxyAuthMiddleware.cs`. The wildcards on manifest/favicon/apple-touch-icon are important: `MapStaticAssets` rewrites tag-helper hrefs to fingerprinted URLs like `/manifest.49ong59m6e.json` for cache-busting, so the browser never actually requests the plain path. The PWA and favicon entries matter because browsers fetch those anonymously — leave them behind auth and you get a `NetworkError` on the manifest in DevTools and the install prompt never appears.
 
 If the header is missing on a protected path, the app returns 401. It never falls back to a "guest" state.
 

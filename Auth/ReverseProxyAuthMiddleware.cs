@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using Microsoft.Extensions.Options;
 
 namespace CartoonArchive.Auth;
@@ -33,6 +34,15 @@ public sealed class ReverseProxyAuthMiddleware(
         "/web-app-manifest-512x512.png",
     };
 
+    // MapStaticAssets rewrites tag-helper hrefs to include a content hash
+    // (e.g. /manifest.49ong59m6e.json). Strip that suffix before matching
+    // so the allowlist above stays declarative and does not need to
+    // enumerate hashed variants.
+    private static readonly Regex FingerprintPattern = new(
+        @"\.[a-z0-9]{8,}\.([a-z0-9]+)$",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase
+    );
+
     private readonly AuthOptions _options = options.Value;
 
     public async Task InvokeAsync(HttpContext context)
@@ -65,11 +75,23 @@ public sealed class ReverseProxyAuthMiddleware(
 
     private static bool IsAllowlisted(PathString path)
     {
+        var normalized = StripFingerprint(path);
         foreach (var prefix in AllowlistedPrefixes)
         {
-            if (path.StartsWithSegments(prefix, StringComparison.OrdinalIgnoreCase))
+            if (normalized.StartsWithSegments(prefix, StringComparison.OrdinalIgnoreCase))
                 return true;
         }
         return false;
+    }
+
+    private static PathString StripFingerprint(PathString path)
+    {
+        var value = path.Value;
+        if (string.IsNullOrEmpty(value))
+            return path;
+        var match = FingerprintPattern.Match(value);
+        if (!match.Success)
+            return path;
+        return new PathString(value[..match.Index] + "." + match.Groups[1].Value);
     }
 }

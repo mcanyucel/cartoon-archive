@@ -1,4 +1,4 @@
-const CACHE_NAME = "karikatur-shell-v2";
+const CACHE_NAME = "karikatur-shell-v3";
 const APP_SHELL = [
   "/css/site.css",
   "/js/site.js",
@@ -14,9 +14,20 @@ const APP_SHELL = [
   "/manifest.json",
 ];
 
+// redirect: "error" — if any shell URL redirects (e.g. an auth wall
+// bouncing us to a login page) the fetch throws and cache install fails
+// loudly, instead of silently caching login-page HTML as if it were the
+// manifest. Caused a real "NetworkError" on the manifest once when the
+// upstream proxy was auth-walling public PWA paths.
 self.addEventListener("install", (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL)),
+    caches
+      .open(CACHE_NAME)
+      .then((cache) =>
+        cache.addAll(
+          APP_SHELL.map((url) => new Request(url, { redirect: "error" })),
+        ),
+      ),
   );
   self.skipWaiting();
 });
