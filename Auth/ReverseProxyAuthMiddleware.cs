@@ -19,7 +19,18 @@ public sealed class ReverseProxyAuthMiddleware(
         "/css",
         "/js",
         "/lib",
+        // Favicons and PWA install assets. Browsers fetch these
+        // unauthenticated when deciding whether the site is installable,
+        // and iOS/Android probe well-known filenames at the site root.
+        // All are public static content, so no auth required.
         "/favicon.ico",
+        "/favicon-96x96.png",
+        "/favicon.svg",
+        "/apple-touch-icon.png",
+        "/manifest.json",
+        "/sw.js",
+        "/web-app-manifest-192x192.png",
+        "/web-app-manifest-512x512.png",
     };
 
     private readonly AuthOptions _options = options.Value;
