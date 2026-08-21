@@ -102,3 +102,19 @@ body {
   right: 0.5rem;
 }
 
+.tag-chip-remove {
+  appearance: none;
+  background: none;
+  border: none;
+  color: inherit;
+  opacity: 0.7;
+  padding: 0 0 0 0.35em;
+  font-weight: bold;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.tag-chip-remove:hover {
+  opacity: 1;
+}
+

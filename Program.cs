@@ -5,6 +5,7 @@ using CartoonArchive.Configuration;
 using CartoonArchive.Data;
 using CartoonArchive.Sharing;
 using CartoonArchive.Storage;
+using CartoonArchive.Tagging;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
@@ -19,6 +20,7 @@ builder.Services.Configure<AuthOptions>(builder.Configuration.GetSection(AuthOpt
 builder.Services.Configure<ShareOptions>(
     builder.Configuration.GetSection(ShareOptions.SectionName)
 );
+builder.Services.Configure<TagOptions>(builder.Configuration.GetSection(TagOptions.SectionName));
 builder.Services.Configure<AppOptions>(builder.Configuration.GetSection(AppOptions.SectionName));
 
 // Add services to the container.
@@ -57,6 +59,7 @@ builder.Services.AddSingleton<ImageStorage>();
 builder.Services.AddSingleton<ThumbnailGenerator>();
 builder.Services.AddHostedService<CaptionWorker>();
 builder.Services.AddHostedService<ShareCleanupWorker>();
+builder.Services.AddHostedService<TagCleanupWorker>();
 builder.Services.AddSingleton<PerceptualHasher>();
 
 // Ensure required directories exist
@@ -128,6 +131,7 @@ app.UseAuthorization();
 app.MapStaticAssets();
 app.MapRazorPages().WithStaticAssets();
 app.MapImageEndpoints();
+app.MapTagEndpoints();
 app.MapShareEndpoints();
 
 // Apply any pending migrations

@@ -4,7 +4,7 @@ A loose backlog of things worth doing later. Order is a rough personal priority,
 
 ## User-facing features
 
-### TAGS
+### DONE: TAGS
 
 Manual tags on top of LLM captions. Some things captions do not cover well:
 
@@ -14,19 +14,17 @@ Manual tags on top of LLM captions. Some things captions do not cover well:
 
 **Design:**
 
-- **Structured tables, not LLM-generated tags inside the caption.** I am not expecting the LLM to reliably identify anything beyond the most famous artists/sources, and edit/remove semantics on tag text embedded in prose would be painful. `tags` catalog + `comic_tags` M2M.
-- **Free-typed with autocomplete against the existing catalog.** Existing tags win, a value not in the list creates a new tag on save.
-- **Unified search: tags flow into FTS5 alongside captions.** A denormalized `tags_text` column on `comics` (kept in sync by triggers on `comic_tags`) is indexed by FTS5. `MATCH 'xkcd table'` naturally returns comics tagged `xkcd` that mention `table` - no separate filter UI needed. FTS5's implicit-AND semantics does the "both must be present, anywhere" case for free.
+- **Structured tables, not LLM-generated tags inside the caption.** I am not expecting the LLM to reliably identify anything beyond the most famous artists/sources, and edit/remove semantics on tag text embedded in prose would be painful. `Tags` catalog + `CartoonTags` M2M.
+- **Free-typed with autocomplete against the existing catalog.** Existing tags win, a value not in the list creates a new tag on save. Normalization (lowercase + diacritic fold via `TagNormalizer`) canonicalizes `Yiğit Özgür` / `YIGIT OZGUR` / `  yigit ozgur  ` to one row.
+- **Unified search: tags flow into FTS5 alongside captions.** A denormalized `TagsText` column on `Cartoons` (kept in sync by triggers on `CartoonTags` INS/DEL and `Tags` UPDATE OF Name) is indexed by FTS5 alongside `Description`. `MATCH 'xkcd table'` naturally returns cartoons tagged `xkcd` that mention `table` — no separate filter UI needed. FTS5's implicit-AND semantics does the "both must be present, anywhere" case for free.
+- **PUT full-replace, not delta.** `PUT /api/images/{id}/tags` takes the full desired list; server diffs against current joins. Simpler contract than POST/DELETE add-remove, and matches how the UI already holds state.
+- **Chips are just links to `/Search?q=<tag>`.** Cheapest possible tag navigation, reuses the existing search pipeline (which now indexes tags via `TagsText`). Trade-off documented under follow-ups.
 
-**Implementation Steps**
+**Known follow-ups:**
 
-1. Migration: `tags` + `comic_tags` tables, `comics.tags_text NOT NULL DEFAULT ''` column.
-2. Drop/recreate `comics_fts` with the new column, backfill from `comics`, replace the existing FTS5 sync triggers (currently description only) with versions that carry `tags_text` too.
-3. Add triggers on `comic_tags` (INS/DEL) and `tags` (UPDATE OF name) that recompute `comics.tags_text` for affected comic(s) via `GROUP_CONCAT`.
-4. Normalize tag names in app code before insert (`.ToLowerInvariant()` plus a diacritic fold). SQLite's `COLLATE NOCASE` is ASCII-only and will not fold Turkish diacritics (verify?).
-5. `TagsRepository`: `Search(prefix)` for autocomplete, `AttachToComic(comicId, names[])`, `DetachFromComic(comicId, names[])` with on-the-fly creation of missing tag rows.
-6. UI: tag chips on archive cards and in the lightbox, autocomplete text box on the comic detail/edit page.
-7. Orphan sweep in the periodic job: `DELETE FROM tags WHERE id NOT IN (SELECT DISTINCT tag_id FROM comic_tags)`.
+- Dedicated `/tag/xkcd` page. Chips currently link to `/Search?q=xkcd`, which works but conflates "tagged xkcd" with "the word xkcd appears in the caption." Cheap fix when it matters: a Razor page that queries by tag id directly instead of via FTS.
+- Tag rename UI. The `Tags_au` DB trigger handles renames correctly (fans out to every affected cartoon's `TagsText`), but there's no UI to invoke it. Slots into a `/tags` management page next to the orphan-sweep view.
+- Theoretical race in `HandleSetTags`: the two `SaveChangesAsync` calls (persist new tags → persist joins) briefly expose new tag rows without joins. `TagCleanupWorker` can't collide with that window at personal scale (24h interval, ms-long endpoint), but wrapping both saves in `BeginTransactionAsync` closes it if bulk-tagging ever becomes contentious.
 
 ### Share links overhaul: OG previews, short URLs, decoupled expiry
 

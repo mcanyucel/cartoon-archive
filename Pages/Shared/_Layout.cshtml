@@ -88,9 +88,11 @@
                                 <span class="badge bg-secondary" id="cartoon-lightbox-language"></span>
                             </p>
                             <p id="cartoon-lightbox-description" class="small mb-2"></p>
+                            <div id="cartoon-lightbox-tags" class="d-flex flex-wrap gap-1 mb-2"></div>
                             <div id="cartoon-lightbox-desc-controls" class="d-flex gap-3 mb-2 small">
                                 <button type="button" class="btn btn-link btn-sm p-0" id="cartoon-lightbox-edit">Edit</button>
                                 <button type="button" class="btn btn-link btn-sm p-0" id="cartoon-lightbox-regen">Regenerate</button>
+                                <button type="button" class="btn btn-link btn-sm p-0" id="cartoon-lightbox-tags-edit">Edit tags</button>
                             </div>
                             <div id="cartoon-lightbox-edit-form" class="d-none mb-2">
                                 <textarea id="cartoon-lightbox-edit-text" class="form-control form-control-sm mb-2" rows="5"></textarea>
@@ -111,6 +113,20 @@
                                 <div class="d-flex gap-2">
                                     <button type="button" class="btn btn-primary btn-sm" id="cartoon-lightbox-regen-confirm">Regenerate</button>
                                     <button type="button" class="btn btn-secondary btn-sm" id="cartoon-lightbox-regen-cancel">Cancel</button>
+                                </div>
+                            </div>
+                            <div id="cartoon-lightbox-tags-form" class="d-none mb-2">
+                                <div id="cartoon-lightbox-tags-chips" class="d-flex flex-wrap gap-1 mb-2"></div>
+                                <div class="position-relative mb-2">
+                                    <input type="text" id="cartoon-lightbox-tags-input"
+                                           class="form-control form-control-sm"
+                                           placeholder="Type a tag, Enter to add…" autocomplete="off">
+                                    <div id="cartoon-lightbox-tags-suggest" class="dropdown-menu shadow-sm w-100"
+                                         style="max-height: 12rem; overflow-y: auto;"></div>
+                                </div>
+                                <div class="d-flex gap-2">
+                                    <button type="button" class="btn btn-primary btn-sm" id="cartoon-lightbox-tags-save">Save</button>
+                                    <button type="button" class="btn btn-secondary btn-sm" id="cartoon-lightbox-tags-cancel">Cancel</button>
                                 </div>
                             </div>
                             <p class="text-muted small mb-0" id="cartoon-lightbox-uploaded"></p>

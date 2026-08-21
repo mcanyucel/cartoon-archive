@@ -1,6 +1,7 @@
 using CartoonArchive.Data;
 using CartoonArchive.Models;
 using CartoonArchive.Storage;
+using CartoonArchive.Tagging;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -168,19 +169,18 @@ public static class ImageEndpoints
         var query = db.Cartoons.OrderByDescending(c => c.Id); // SQLite cannot sort by DateTimeOffset. Id should be auto-incrementing anyways
         var total = await query.CountAsync(ct);
 
-        var cartoons = await query
-            .Skip((p - 1) * size)
-            .Take(size)
-            .AsNoTracking()
-            .ToListAsync(ct);
+        var cartoons = await query.Skip((p - 1) * size).Take(size).AsNoTracking().ToListAsync(ct);
+        var tagsMap = await TagLoader.LoadAsync(db, cartoons.Select(c => c.Id).ToList(), ct);
 
-        return Results.Ok(new
-        {
-            items = cartoons.Select(c => ToResponse(c)),
-            page = p,
-            pageSize = size,
-            total,
-        });
+        return Results.Ok(
+            new
+            {
+                items = cartoons.Select(c => ToResponse(c, tagsMap.GetValueOrDefault(c.Id))),
+                page = p,
+                pageSize = size,
+                total,
+            }
+        );
     }
 
     private static async Task<IResult> HandleSearch(
@@ -225,7 +225,13 @@ public static class ImageEndpoints
             )
             .ToDictionaryAsync(x => x.Id, x => SafeSnippet(x.Snippet), ct);
 
-        return Results.Ok(cartoons.Select(c => ToResponse(c, snippets.GetValueOrDefault(c.Id))));
+        var tagsMap = await TagLoader.LoadAsync(db, cartoons.Select(c => c.Id).ToList(), ct);
+
+        return Results.Ok(
+            cartoons.Select(c =>
+                ToResponse(c, tagsMap.GetValueOrDefault(c.Id), snippets.GetValueOrDefault(c.Id))
+            )
+        );
     }
 
     private sealed class SnippetRow
@@ -382,7 +388,11 @@ public static class ImageEndpoints
         return Results.Ok(ToResponse(cartoon));
     }
 
-    private static CartoonResponse ToResponse(Cartoon c, string? snippet = null) =>
+    private static CartoonResponse ToResponse(
+        Cartoon c,
+        IReadOnlyList<string>? tags = null,
+        string? snippet = null
+    ) =>
         new(
             Id: c.Id,
             Sha256: c.Sha256,
@@ -394,6 +404,7 @@ public static class ImageEndpoints
             ThumbnailUrl: $"/thumbnails/{c.Sha256}.webp",
             Description: c.Description,
             ErrorMessage: c.ErrorMessage,
+            Tags: tags ?? Array.Empty<string>(),
             Snippet: snippet
         );
 }

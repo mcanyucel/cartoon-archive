@@ -27,6 +27,17 @@ window.CartoonCard = (function () {
     }
   }
 
+  function renderTagChips(tags) {
+    if (!tags || tags.length === 0) return "";
+    const chips = tags
+      .map(
+        (t) =>
+          `<a href="/Search?q=${encodeURIComponent(t)}" class="badge text-bg-secondary text-decoration-none">${escapeHtml(t)}</a>`,
+      )
+      .join("");
+    return `<div class="d-flex flex-wrap gap-1 mb-1">${chips}</div>`;
+  }
+
   function renderBody(c) {
     if (c.status === STATUS_PENDING) {
       return `
@@ -83,6 +94,7 @@ window.CartoonCard = (function () {
                             : ""
                         }
                     </div>
+                    ${renderTagChips(c.tags)}
                     ${renderBody(c)}
                 </div>
             </div>
@@ -214,6 +226,14 @@ window.CartoonCard = (function () {
     if (regenerating) controls.classList.add("d-none");
   }
 
+  function setTagsMode(modal, editing) {
+    const controls = modal.querySelector("#cartoon-lightbox-desc-controls");
+    const form = modal.querySelector("#cartoon-lightbox-tags-form");
+    if (!controls || !form) return;
+    form.classList.toggle("d-none", !editing);
+    if (editing) controls.classList.add("d-none");
+  }
+
   // Warm the browser cache for the immediate neighbors so arrow-key
   // navigation feels instant instead of blank-frame-then-image.
   function preloadNeighbors(index) {
@@ -335,6 +355,10 @@ window.CartoonCard = (function () {
       descEl.className = "small mb-2";
     }
 
+    const tagsViewEl = modal.querySelector("#cartoon-lightbox-tags");
+    if (tagsViewEl)
+      tagsViewEl.innerHTML = renderTagChips(c.tags).replace(/mb-1/, "");
+
     modal.querySelector("#cartoon-lightbox-uploaded").textContent =
       `Uploaded ${formatUploadedAt(c.uploadedAt)}`;
 
@@ -424,6 +448,7 @@ window.CartoonCard = (function () {
       setConfirmMode(modal, false);
       setEditMode(modal, false);
       setRegenMode(modal, false);
+      setTagsMode(modal, false);
     });
 
     editBtn?.addEventListener("click", () => {
@@ -519,6 +544,191 @@ window.CartoonCard = (function () {
       } finally {
         regenConfirm.disabled = false;
         if (regenCancel) regenCancel.disabled = false;
+      }
+    });
+
+    // ---- Tag editor ----
+    const tagsEditBtn = modal.querySelector("#cartoon-lightbox-tags-edit");
+    const tagsChipsEl = modal.querySelector("#cartoon-lightbox-tags-chips");
+    const tagsInput = modal.querySelector("#cartoon-lightbox-tags-input");
+    const tagsSuggest = modal.querySelector("#cartoon-lightbox-tags-suggest");
+    const tagsSave = modal.querySelector("#cartoon-lightbox-tags-save");
+    const tagsCancel = modal.querySelector("#cartoon-lightbox-tags-cancel");
+    const tagsViewEl = modal.querySelector("#cartoon-lightbox-tags");
+
+    let editingTags = [];
+    let acDebounce = null;
+    let acAborter = null;
+    let acHighlight = -1;
+
+    function paintChips() {
+      tagsChipsEl.innerHTML = editingTags
+        .map(
+          (t, i) =>
+            `<span class="badge text-bg-secondary d-inline-flex align-items-center">${escapeHtml(t)}<button type="button" class="tag-chip-remove" data-remove-index="${i}" aria-label="Remove ${escapeHtml(t)}">×</button></span>`,
+        )
+        .join("");
+    }
+
+    function closeAc() {
+      tagsSuggest.classList.remove("show");
+      tagsSuggest.innerHTML = "";
+      acHighlight = -1;
+    }
+
+    function addTagToEdit(raw) {
+      const v = (raw ?? "").trim().toLowerCase();
+      if (!v) return;
+      if (!editingTags.includes(v)) {
+        editingTags.push(v);
+        paintChips();
+      }
+      tagsInput.value = "";
+      closeAc();
+    }
+
+    async function refreshAc() {
+      const prefix = tagsInput.value.trim();
+      if (!prefix) return closeAc();
+      if (acAborter) acAborter.abort();
+      acAborter = new AbortController();
+      try {
+        const response = await fetch(
+          `/api/tags?prefix=${encodeURIComponent(prefix)}&limit=10`,
+          { signal: acAborter.signal },
+        );
+        if (!response.ok) return;
+        const data = await response.json();
+        const items = (data.items || []).filter(
+          (t) => !editingTags.includes(t.name),
+        );
+        if (!items.length) return closeAc();
+        tagsSuggest.innerHTML = items
+          .map(
+            (t) =>
+              `<button type="button" class="dropdown-item" data-tag="${escapeHtml(t.name)}">${escapeHtml(t.name)}</button>`,
+          )
+          .join("");
+        tagsSuggest.classList.add("show");
+        acHighlight = -1;
+      } catch (e) {
+        // AbortError is expected on rapid typing; anything else is non-fatal.
+      }
+    }
+
+    function updateAcHighlight() {
+      const items = tagsSuggest.querySelectorAll(".dropdown-item");
+      items.forEach((el, i) => el.classList.toggle("active", i === acHighlight));
+    }
+
+    tagsEditBtn?.addEventListener("click", () => {
+      if (!currentCartoon) return;
+      setMessage("", "");
+      editingTags = [...(currentCartoon.tags || [])];
+      paintChips();
+      tagsInput.value = "";
+      closeAc();
+      setTagsMode(modal, true);
+      tagsInput.focus();
+    });
+
+    tagsCancel?.addEventListener("click", () => {
+      setTagsMode(modal, false);
+      if (descControls && currentCartoon?.status === STATUS_READY)
+        descControls.classList.remove("d-none");
+    });
+
+    tagsInput?.addEventListener("input", () => {
+      clearTimeout(acDebounce);
+      acDebounce = setTimeout(refreshAc, 200);
+    });
+
+    tagsInput?.addEventListener("keydown", (e) => {
+      const items = tagsSuggest.querySelectorAll(".dropdown-item");
+      if (e.key === "Enter") {
+        e.preventDefault();
+        if (acHighlight >= 0 && items[acHighlight]) {
+          addTagToEdit(items[acHighlight].dataset.tag);
+        } else if (tagsInput.value.trim()) {
+          addTagToEdit(tagsInput.value);
+        }
+      } else if (e.key === "Escape") {
+        closeAc();
+      } else if (e.key === "ArrowDown" && items.length) {
+        e.preventDefault();
+        acHighlight = (acHighlight + 1) % items.length;
+        updateAcHighlight();
+      } else if (e.key === "ArrowUp" && items.length) {
+        e.preventDefault();
+        acHighlight = acHighlight <= 0 ? items.length - 1 : acHighlight - 1;
+        updateAcHighlight();
+      } else if (
+        e.key === "Backspace" &&
+        tagsInput.value === "" &&
+        editingTags.length > 0
+      ) {
+        editingTags.pop();
+        paintChips();
+      }
+    });
+
+    // mousedown (not click) + preventDefault stops the input from blurring
+    // before the click lands.
+    tagsSuggest?.addEventListener("mousedown", (e) => {
+      const btn = e.target.closest(".dropdown-item");
+      if (!btn) return;
+      e.preventDefault();
+      addTagToEdit(btn.dataset.tag);
+      tagsInput.focus();
+    });
+
+    tagsInput?.addEventListener("blur", () => setTimeout(closeAc, 150));
+
+    tagsChipsEl?.addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-remove-index]");
+      if (!btn) return;
+      const idx = Number(btn.dataset.removeIndex);
+      editingTags.splice(idx, 1);
+      paintChips();
+    });
+
+    tagsSave?.addEventListener("click", async () => {
+      if (!currentCartoon) return;
+      tagsSave.disabled = true;
+      if (tagsCancel) tagsCancel.disabled = true;
+      try {
+        const response = await fetch(
+          `/api/images/${currentCartoon.id}/tags`,
+          {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ names: editingTags }),
+          },
+        );
+        if (response.ok) {
+          const data = await response.json();
+          currentCartoon = { ...currentCartoon, tags: data.tags };
+          cache.set(currentCartoon.id, currentCartoon);
+          if (tagsViewEl)
+            tagsViewEl.innerHTML = renderTagChips(currentCartoon.tags).replace(
+              /mb-1/,
+              "",
+            );
+          setTagsMode(modal, false);
+          if (descControls) descControls.classList.remove("d-none");
+          setMessage("Tags saved.", "text-success");
+        } else {
+          const err = await response.json().catch(() => ({}));
+          setMessage(
+            `Save failed: ${err.error ?? response.statusText}`,
+            "text-danger",
+          );
+        }
+      } catch (e) {
+        setMessage(`Save failed: ${e.message}`, "text-danger");
+      } finally {
+        tagsSave.disabled = false;
+        if (tagsCancel) tagsCancel.disabled = false;
       }
     });
 

@@ -13,6 +13,7 @@ public record CartoonResponse(
     string ThumbnailUrl,
     string? Description,
     string? ErrorMessage,
+    IReadOnlyList<string> Tags,
     string? Snippet = null
 );
 
@@ -23,3 +24,11 @@ public record UploadResponse(CartoonResponse Cartoon, IReadOnlyList<NearDuplicat
 public record EditRequest(string? Description, string? Language);
 
 public record RegenerateRequest(string? Language);
+
+public record TagResponse(int Id, string Name);
+
+public record TagListResponse(IReadOnlyList<TagResponse> Items);
+
+public record SetTagsRequest(IReadOnlyList<string>? Names);
+
+public record CartoonTagsResponse(int CartoonId, IReadOnlyList<string> Tags);

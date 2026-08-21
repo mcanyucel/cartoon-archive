@@ -57,6 +57,10 @@ namespace CartoonArchive.Migrations
                     b.Property<int>("Status")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("TagsText")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
                     b.Property<DateTimeOffset>("UploadedAt")
                         .HasColumnType("TEXT");
 
@@ -68,6 +72,21 @@ namespace CartoonArchive.Migrations
                     b.HasIndex("Status");
 
                     b.ToTable("Cartoons");
+                });
+
+            modelBuilder.Entity("CartoonArchive.Models.CartoonTag", b =>
+                {
+                    b.Property<int>("CartoonId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("TagId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("CartoonId", "TagId");
+
+                    b.HasIndex("TagId");
+
+                    b.ToTable("CartoonTags");
                 });
 
             modelBuilder.Entity("CartoonArchive.Models.ShareToken", b =>
@@ -89,6 +108,40 @@ namespace CartoonArchive.Migrations
                     b.HasIndex("ExpiresAt");
 
                     b.ToTable("ShareTokens");
+                });
+
+            modelBuilder.Entity("CartoonArchive.Models.Tag", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Name")
+                        .IsUnique();
+
+                    b.ToTable("Tags");
+                });
+
+            modelBuilder.Entity("CartoonArchive.Models.CartoonTag", b =>
+                {
+                    b.HasOne("CartoonArchive.Models.Cartoon", null)
+                        .WithMany()
+                        .HasForeignKey("CartoonId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("CartoonArchive.Models.Tag", null)
+                        .WithMany()
+                        .HasForeignKey("TagId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("CartoonArchive.Models.ShareToken", b =>
