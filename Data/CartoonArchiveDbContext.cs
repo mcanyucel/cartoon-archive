@@ -43,7 +43,7 @@ public sealed class CartoonArchiveDbContext(DbContextOptions<CartoonArchiveDbCon
         var share = modelBuilder.Entity<ShareToken>();
         share.HasKey(s => s.Token);
         share.Property(s => s.Token).HasMaxLength(64);
-        share.HasIndex(s => s.ExpiresAt);
+        share.HasIndex(s => s.MetadataUntil);
         share
             .HasOne(s => s.Cartoon)
             .WithMany()

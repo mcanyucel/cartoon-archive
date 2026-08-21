@@ -49,14 +49,19 @@ This is not vector-based semantic search. There are no embeddings and no vector 
 
 ### Temporary sharing
 
-Sometimes you want to send one specific image to someone who does not have an account on your instance, without opening up the rest of the archive. Clicking share on an item generates a URL like `/s/a1b2c3d4e5f6...` that:
+Sometimes you want to send one specific image to someone who does not have an account on your instance, without opening up the rest of the archive. Clicking share on an item generates a short URL like `/s/abc123defG` that:
 
-* Grants read-only access to that one image only. The recipient sees the image and a small caption hint if you provided one, nothing else.
-* Expires after a configurable time-to-live (`Share:TokenTtlHours`, default 1 hour). Once expired, the URL returns 410 Gone.
-* Is safe to send over any channel. The token is 128 bits of entropy, which is 32 hex characters, and is generated with `RandomNumberGenerator.GetBytes`. It is not guessable.
-* Bypasses the app's authentication middleware, so the recipient does not need an SSO login or account. The token is the authorization.
+* Grants read-only access to that one image only, on a dedicated page with no navigation back into the archive.
+* Renders proper Open Graph metadata, so pasting the link into WhatsApp, Discord, Slack, or iMessage produces a preview card with the caption and thumbnail. Chat previews are the point — a bare image link with no preview looks suspicious on mobile.
+* Has two lifetimes, not one:
+  * `Share:TokenTtlHours` (default 1 hour) — how long the image is viewable. Past this, both the HTML page and the `/image` sub-route stop serving the image; the page falls back to a placeholder that shows the caption, tags, and share date so the recipient still knows what the link had been.
+  * `Share:MetadataTtlHours` (default 168 = 7 days) — how long the row itself sticks around before the sweep deletes it. After this, the URL returns 410 Gone with a generic body.
+* Is safe to send over any channel. The token is 10 base64url characters (~56 bits from `RandomNumberGenerator.GetBytes(7)`). Not guessable at personal-archive scale.
+* Bypasses the app's authentication middleware (both `/s/{token}` and `/s/{token}/image` are on the `/s` allowlist), so the recipient does not need an SSO login. The token is the authorization.
 
-A background sweeper (`Sharing/ShareCleanupWorker.cs`) removes expired tokens on `Share:SweepIntervalMinutes` (default 10) so the table stays small even after heavy sharing.
+The `/s/{token}/image` sub-route serves the thumbnail (fallback to full-res if the thumbnail is missing) and independently enforces the same active-window check, so redaction is not defeated by hitting the image URL directly after expiry.
+
+A background sweeper (`Sharing/ShareCleanupWorker.cs`) removes rows past `MetadataUntil` on `Share:SweepIntervalMinutes` (default 10) so the table stays small even after heavy sharing.
 
 ### Near-duplicate detection (weak, but present)
 
@@ -374,11 +379,16 @@ The NuGet library `CoenM.ImageSharp.ImageHash` requires `SixLabors.ImageSharp`. 
 
 ### Temporary sharing
 
-* `GenerateToken` uses `RandomNumberGenerator.GetBytes(16)`, that is 128 bits of entropy, which results in 32 hex chars. Pretty unguessable.
-* `HtmlEncoder.Default.Encode(hint)`: the hint comes from a URL query param, so an attacker could put `<script>` in it. Encoding neutralizes those attacks. Razor does this automatically for `@Model.X` in Razor pages, but we are building the HTML by hand, so we call it explicitly.
-* `Results.File(path, contentType)`: streams the file bytes with the right content type. Headers we set beforehand are preserved.
-* Double-checking the file: if the token exists but the underlying file has been deleted, we treat it as expired. Better than returning 500.
-* `Results.Content(..., 410)`: 410 Gone is the semantically correct status for "this used to exist and is intentionally no longer available". Search engines drop the URL from their indexes on 410, unlike 404.
+* `GenerateToken` uses `RandomNumberGenerator.GetBytes(7)` and base64url-encodes to a 10-character token (~56 bits of entropy). Enough for personal-scale sharing volumes; shorter than 32-hex is worth it for how ugly the old links looked in chat messages. Trailing `=` padding is trimmed and `+`/`/` are swapped for URL-safe `-`/`_`.
+* Two routes, one row: `/s/{token}` returns HTML, `/s/{token}/image` returns the thumbnail bytes (falling back to full-res if no thumbnail exists). Both live under the `/s` prefix that `ReverseProxyAuthMiddleware` allowlists, so crawlers and unauthenticated recipients can reach them.
+* The sub-route enforces `ActiveUntil` independently. Serving image bytes past the active window would defeat the redaction the HTML page performs, so both routes have to check.
+* Three render branches in one endpoint:
+  * `now < ActiveUntil`: 200 OK. Image-only body on `background: #111`; full OG head with the caption as `og:title` and `og:description`, the thumbnail URL as `og:image`, and `twitter:card=summary_large_image`. No caption text or tag chips in the visible body — the app is not promoting itself here.
+  * `ActiveUntil ≤ now < MetadataUntil`: 200 OK. Placeholder body with the caption, tags (loaded via `TagLoader.LoadAsync`), original share date, and both countdowns. `<head>` intentionally omits `og:image` — the thumbnail is redacted from the response and pointing crawlers at it would leak the image. `og:title` and `og:description` stay so chat previews still convey what the link had been.
+  * `now ≥ MetadataUntil` or unknown token: 410 Gone with a minimal body and no OG. Unknown and swept are indistinguishable; the endpoint does not disclose which.
+* `HtmlEncoder.Default.Encode(...)`: every interpolated value in the templates goes through this. Razor does it automatically for `@Model.X` in cshtml, but these templates are hand-built strings.
+* `Results.File(path, contentType)`: streams the file bytes with the right content type. `Cache-Control: no-store` is set beforehand so browsers do not cache past expiry.
+* Legacy `?k=` URLs still resolve. The new handler ignores query params, so previously-issued links keep working — they render the new HTML instead of the old raw-image response, which is a UX upgrade rather than a break.
 
 ### SSRF prevention on URL fetching
 

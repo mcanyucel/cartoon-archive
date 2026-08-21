@@ -95,17 +95,23 @@ namespace CartoonArchive.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("TEXT");
 
+                    b.Property<DateTimeOffset>("ActiveUntil")
+                        .HasColumnType("TEXT");
+
                     b.Property<int>("CartoonId")
                         .HasColumnType("INTEGER");
 
-                    b.Property<DateTimeOffset>("ExpiresAt")
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTimeOffset>("MetadataUntil")
                         .HasColumnType("TEXT");
 
                     b.HasKey("Token");
 
                     b.HasIndex("CartoonId");
 
-                    b.HasIndex("ExpiresAt");
+                    b.HasIndex("MetadataUntil");
 
                     b.ToTable("ShareTokens");
                 });

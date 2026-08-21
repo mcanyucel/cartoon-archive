@@ -5,5 +5,7 @@ public sealed class ShareToken
     public required string Token { get; set; }
     public int CartoonId { get; set; }
     public Cartoon Cartoon { get; set; } = null!;
-    public DateTimeOffset ExpiresAt { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
+    public DateTimeOffset ActiveUntil { get; set; }
+    public DateTimeOffset MetadataUntil { get; set; }
 }

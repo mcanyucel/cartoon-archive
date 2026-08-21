@@ -26,37 +26,33 @@ Manual tags on top of LLM captions. Some things captions do not cover well:
 - Tag rename UI. The `Tags_au` DB trigger handles renames correctly (fans out to every affected cartoon's `TagsText`), but there's no UI to invoke it. Slots into a `/tags` management page next to the orphan-sweep view.
 - Theoretical race in `HandleSetTags`: the two `SaveChangesAsync` calls (persist new tags → persist joins) briefly expose new tag rows without joins. `TagCleanupWorker` can't collide with that window at personal scale (24h interval, ms-long endpoint), but wrapping both saves in `BeginTransactionAsync` closes it if bulk-tagging ever becomes contentious.
 
-### Share links overhaul: OG previews, short URLs, decoupled expiry
+### DONE: Share links overhaul: OG previews, short URLs, decoupled expiry
 
-Three rough edges around shared links, all rooted in the same problem: `/s/{token}` currently streams raw image bytes, which leaves no room for HTML `<head>` metadata, drives the 'keywords in URL' workaround for post-expiry readability, and gives chat apps nothing to render as preview cards.
+Three rough edges around shared links, all rooted in the same problem: `/s/{token}` used to stream raw image bytes, which left no room for HTML `<head>` metadata, drove the 'keywords in URL' workaround for post-expiry readability, and gave chat apps nothing to render as preview cards.
 
-- **No OG previews.** WhatsApp/Discord/Slack link previews come from `og:*` meta tags. A raw image response has no `<head>`, so previews are blank or the app refuses to render one at all. Looks suspicious, especially on mobile.
-- **Ugly URLs.** Keywords currently live in the path (`/s/xkcd-programming-humor-…`) so that after expiry a human can still tell what the link was about. Works, but URLs bloat with URL-encoded unicode and are painful to share in a message.
-- **Blank expired page.** After expiry, users get a bare 404 with no context about what the link used to be.
+- **No OG previews.** WhatsApp/Discord/Slack link previews come from `og:*` meta tags. A raw image response has no `<head>`, so previews were blank or the app refused to render one at all.
+- **Ugly URLs.** Keywords used to live in the path (`/s/…?k=xkcd+programming+humor…`) so that after expiry a human could still tell what the link was about. URLs bloated with URL-encoded unicode and were painful to share in a message.
+- **Blank expired page.** After expiry, users got a bare 410 with only a keyword hint parsed from the query string — no context about what the link had been.
 
-The unifying fix: switch `/s/{token}` from "image response" to "HTML response", and everything else follows from that.
+The unifying fix: switch `/s/{token}` from "image response" to "HTML response", and everything else follows.
 
 **Design:**
 
-- **HTML page at `/s/{token}`, image bytes at `/s/{token}/image`.** The HTML carries `og:title`, `og:description`, `og:image` (absolute URL), `og:image:width/height`, and `twitter:card=summary_large_image`. The sub-route serves the thumbnail (not full-res) because WhatsApp practically wants <=300 kB. Both routes stay unauthenticated - crawlers have no SSO session. The sub-route must itself refuse to serve bytes after `active_until`; otherwise redaction leaks.
-- **Short opaque token** (`/s/abc123`); no keywords in the path. Title, tags, and description now live in the page `<head>` and `<body>`, not in the url string.
-- **Two TTLs on the share row.** `active_until` for the "share is viewable" window, `metadata_until` (much longer, e.g. `active_until + 7 days`) for how long the row itself sticks around. Sweep deletes only rows past `metadata_until`.
-- **Three render states from one template, each with its own OG treatment:**
-  - `now < active_until` — **200 OK.** Body is minimal: just the image, nicely presented (dark background, comfortable padding). No caption text, no tag chips, no backlink to the archive — the app is not being promoted here. `<head>` carries `og:title` (caption), `og:description`, `og:image` (absolute URL to `/s/{token}/image`), `og:image:width`/`height`, `twitter:card=summary_large_image` for chat previews.
-  - `active_until <= now < metadata_until` — **200 OK.** Placeholder body with title, tags, original share date, "expired on X", and honest disclosure that the metadata itself disappears on Y. `<head>` intentionally excludes the thumbnail — the image is redacted from the response, and pointing `og:image` at the thumbnail would leak it. Either omit `og:image` entirely, or point it at a static, generic "expired" placeholder asset. `og:title` and `og:description` may stay so chat previews still convey what the link used to be.
-  - `now >= metadata_until` or no row — **410 Gone.** Semantically correct for "existed, deliberately swept" — signals to caches and crawlers that the URL is not coming back (404 means "we don't know", 410 means "it's over"). Minimal body, no OG tags.
+- **HTML page at `/s/{token}`, image bytes at `/s/{token}/image`.** The HTML carries `og:title`, `og:description`, `og:image` (absolute URL), and `twitter:card=summary_large_image`. The sub-route serves the thumbnail (fallback to full-res if absent) — WhatsApp practically wants ≤300 KB and thumbnails cap at 512 px. Both routes stay unauthenticated (already covered by the existing `/s` allowlist in `ReverseProxyAuthMiddleware`); crawlers have no SSO session. The sub-route independently enforces `ActiveUntil` so redaction cannot leak.
+- **Short opaque token** (`/s/abc123defG`, 10 chars base64url, ~56 bits from 7 random bytes). No keywords in the path. Title, tags, and description now live in the page `<head>` and body.
+- **Two TTLs on the share row.** `ActiveUntil` for the viewable window, `MetadataUntil` (much longer, default `ActiveUntil + 7 days` via `Share:MetadataTtlHours`) for how long the row itself sticks around. Sweep deletes only rows past `MetadataUntil`.
+- **`CreatedAt` on ShareToken.** Needed so the placeholder body can honestly show "shared on X". Backfilled on existing rows to `ActiveUntil - 1 hour`, which is the default `TokenTtlHours`.
+- **Three render states from one endpoint, each with its own OG treatment:**
+  - `now < ActiveUntil` — **200 OK.** Image-only body on a dark background — no caption text, no tag chips, no backlink to the archive. Full OG head so chat previews render with the caption.
+  - `ActiveUntil ≤ now < MetadataUntil` — **200 OK.** Placeholder body with the caption, tags, original share date, expiry timestamp, and the metadata-sweep countdown. `og:image` deliberately omitted so the thumbnail is not leaked; `og:title` and `og:description` stay so chat previews still convey what the link used to be.
+  - `now ≥ MetadataUntil`, or unknown token — **410 Gone.** Generic body, no OG. Unknown-token and swept-token responses are identical so the endpoint does not disclose which state a token was in.
+- **Legacy `?k=` URLs still resolve.** The new handler ignores any query params, so previously-shared links keep working — they just get the new HTML response instead of the old raw-image response, which is a UX upgrade.
 
-**Implementation steps**
+**Known follow-ups:**
 
-1. Migration on the shares table: rename existing expiry to `active_until`, add `metadata_until`.
-2. Split `/s/` into two routes. `/s/{token}` returns HTML from a Razor page or minimal template; `/s/{token}/image` returns the thumbnail bytes (fallback to full-res if no thumbnail exists). Both stay unauthenticated. Sub-route must return 410 in the expired and gone states — do not serve the image after `active_until`.
-3. Build one HTML template with three render branches (active / expired-with-metadata / gone). Absolute URLs for `og:image`; include `og:image:width`/`height`; `twitter:card=summary_large_image`. Active-state body kept deliberately spare (image only, styled). Optional: ship a static "expired" placeholder asset under `wwwroot/` for the expired-state `og:image`.
-4. Switch the share URL generator to a short opaque token; drop keyword embedding from the path.
-5. Sweep job: delete rows where `now ≥ metadata_until` (currently deletes past `expires_at`).
-6. Legacy long URLs: either keep the old resolver alive in parallel until existing rows drop out naturally, or reissue tokens in a one-shot migration and accept that circulated long URLs will 410 after cutover.
-7. Manual smoke test in WhatsApp, Discord, Slack, iMessage — each has its own quirks around image size, HTTPS, and absolute-URL requirements. Worth doing once end-to-end before calling this done.
-
-Small bonus once tags land: the "expired with metadata" body renders tag chips, so a chat recipient can see it was about "xkcd, programming" even after the image itself stops displaying.
+- Static "expired" placeholder asset for `og:image` in the expired-metadata state. Currently omitted so no thumbnail leaks; a generic branded card would render nicer previews. Ship under `wwwroot/` and reference by absolute URL if you want it.
+- `og:image:width/height`. Skipped for now because thumbnails vary in aspect ratio (fit-in 512 px) and lying to crawlers is worse than omitting. Could be added if we start recording thumb dimensions on generation.
+- `HintWordCount` option removed; `appsettings.json` no longer includes it. Any user overrides pointing at it are silently ignored.
 
 ### DONE: Turkish morphology: prefix matching in search
 

@@ -22,7 +22,7 @@ public sealed class ShareCleanupWorker(IServiceProvider services, IOptions<Share
                 // Raw SQL — SQLite's EF provider can't translate
                 // ExecuteDeleteAsync with a DateTimeOffset comparison.
                 var removed = await db.Database.ExecuteSqlAsync(
-                    $"DELETE FROM ShareTokens WHERE ExpiresAt < {now}",
+                    $"DELETE FROM ShareTokens WHERE MetadataUntil < {now}",
                     ct
                 );
                 if (removed > 0)
