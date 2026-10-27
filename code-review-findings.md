@@ -12,11 +12,46 @@ most safety per hour.
 
 ---
 
-## 1. Bad image bytes → HTTP 500 + permanently orphaned file
+## 1. Bad image bytes → HTTP 500 + permanently orphaned file — FIXED
 
-- [ ] Fix
+- [x] Fix
 - **Where:** `Api/ImageEndpoint.cs:97-101`, `Storage/ThumbnailGenerator.cs:23`
-- **Status:** Confirmed empirically against a running instance.
+- **Status:** Confirmed empirically against a running instance, then fixed and re-verified.
+
+### How it was fixed
+
+1. New `Storage/ImageDecodeException.cs`, following the existing `UrlFetchException`
+   convention. `ThumbnailGenerator` and `PerceptualHasher` now throw it instead of
+   `InvalidOperationException` when `SKBitmap.Decode` returns null.
+2. The exact-SHA duplicate check moved **ahead** of thumbnailing in `HandleUpload`. This is
+   load-bearing, not just an optimisation: having cleared that check is what proves no
+   `Cartoons` row references the stored file, which is what makes deleting it safe.
+3. Decode + perceptual hash wrapped in a `try`, catching **only** `ImageDecodeException`.
+   An environmental failure (unwritable thumbnail dir, disk full) deliberately still
+   propagates, because those bytes may be a perfectly valid image that must not be deleted.
+4. `TryDelete` helper added for the rejected-upload path, so a failed cleanup can't mask the
+   400 with a 500.
+
+Verified after the fix — all three paths:
+
+| Case | Before | After |
+| --- | --- | --- |
+| Spoofed content type | 500 + orphaned file on disk | `400 {"error":"File could not be decoded as image/png."}`, no file left behind |
+| Valid new PNG | 201 | 201, thumbnail generated |
+| Same PNG re-uploaded | 409 | 409, **and the shared file survives** |
+
+That third row is the regression that mattered: cleanup must never fire on the duplicate
+path, since there the file legitimately belongs to an existing row.
+
+### Still open from this item
+
+- [ ] **Magic-byte sniffing.** Content type is still taken from the client's claim
+      (`ImageEndpoint.cs:68`). Decoding now catches the lie, but only *after* the bytes have
+      been written to disk and hashed. Sniffing the header would reject it before any I/O.
+- [ ] **`HandleDelete` cleanup isn't actually best-effort.** Its comment says it is, but
+      `ImageEndpoint.cs:288-291` calls `File.Delete` unguarded, so an `IOException` there
+      throws a 500 *after* the row is already committed. Switching those two calls to the
+      new `TryDelete` makes the comment true. Left alone for now to keep this fix focused.
 
 `ImageStorage.StoreAsync` writes the file to disk, then `ThumbnailGenerator.GenerateAsync`
 throws `InvalidOperationException` when SkiaSharp's `Decode` returns null. Nothing between
@@ -71,11 +106,11 @@ pre-insert decode failure, never after a 409.
 
 ---
 
-## 2. `RebuildFtsForTags.Down()` references a table called `C`
+## 2. `RebuildFtsForTags.Down()` references a table called `C` — FIXED
 
-- [ ] Fix
+- [x] Fix
 - **Where:** `Migrations/20260821094012_RebuildFtsForTags.cs:164` and `:174`
-- **Status:** Confirmed by reading.
+- **Status:** Fixed (`ON C` → `ON Cartoons` in both places) and verified end-to-end.
 
 ```sql
 CREATE TRIGGER Cartoons_au_del AFTER UPDATE OF Description ON C
@@ -86,6 +121,31 @@ first, then dies on `no such table: C` — leaving the database with no FTS tabl
 triggers at all. Only reachable on a rollback, which is precisely when you can't afford it.
 
 One-word fix in two places.
+
+### Verification
+
+A build can't catch this — the SQL lives in a string literal — so it was exercised for real
+against a throwaway SQLite file:
+
+```bash
+export ConnectionStrings__Default="Data Source=/tmp/scratch/m.db"
+dotnet ef database update                  # up to head
+dotnet ef database update AddTags          # down through the fixed Down()
+```
+
+Both complete. Post-rollback schema is correct:
+
+- `Cartoons_au_del` / `Cartoons_au_ins` exist and target `ON Cartoons`.
+- `CartoonsFts` is back to its single-column form (`Description` only, no `TagsText`).
+
+And the old form genuinely was broken — the same statement run directly:
+
+```
+Parse error near line 6: no such table: main.C
+```
+
+Worth knowing for next time: `dotnet ef migrations script` reads the **compiled** assembly,
+so `--no-build` after editing a migration will happily show you the old SQL. Rebuild first.
 
 ---
 

@@ -98,19 +98,38 @@ public static class ImageEndpoints
         }
 
         var sourcePath = storage.GetPath(sha256, contentType);
-        await thumbnailGenerator.GenerateAsync(sha256, sourcePath, ct);
 
-        // Exact SHA matching
+        // Exact SHA matching. Deliberately ahead of any decoding: a re-upload of a known
+        // image shouldn't pay to thumbnail it again, and clearing this check is what lets
+        // the cleanup below delete the stored file knowing no row references it.
         var existing = await db
             .Cartoons.AsNoTracking()
             .FirstOrDefaultAsync(c => c.Sha256 == sha256, ct);
         if (existing is not null)
             return Results.Conflict(ToResponse(existing));
 
+        // The declared content type is only the client's claim; decoding is what proves
+        // these bytes are an image. Catch the decode failure alone - an environmental
+        // failure (unwritable thumbnail dir, disk full) must not delete the file, since
+        // those bytes may well be a valid image.
+        long pHash;
+        try
+        {
+            await thumbnailGenerator.GenerateAsync(sha256, sourcePath, ct);
+            pHash = await hasher.HashAsync(sourcePath, ct);
+        }
+        catch (ImageDecodeException)
+        {
+            // Nothing references this file - reclaim it rather than orphan it on disk.
+            TryDelete(sourcePath);
+            return Results.BadRequest(
+                new { error = $"File could not be decoded as {contentType}." }
+            );
+        }
+
         // Perceptual hash matching. dHash tends to give ~15 bits distance for
         // heavily-downsampled duplicates and ~32 bits for unrelated images.
         // 18 catches shrinks/re-encodes with margin; crops need a different algorithm.
-        var pHash = await hasher.HashAsync(sourcePath, ct);
         const int ThresholdBits = 18;
         var existingHashes = await db
             .Cartoons.Where(c => c.PerceptualHash != null)
@@ -386,6 +405,24 @@ public static class ImageEndpoints
         await db.SaveChangesAsync(ct);
 
         return Results.Ok(ToResponse(cartoon));
+    }
+
+    /// <summary>
+    /// Best-effort file removal. Used on the rejected-upload path, where the caller is
+    /// already returning an error and a failed cleanup must not mask it with a 500.
+    /// </summary>
+    private static void TryDelete(string path)
+    {
+        try
+        {
+            File.Delete(path);
+        }
+        catch (IOException)
+        { /* leave it for the next sweep; the response still stands */
+        }
+        catch (UnauthorizedAccessException)
+        { /* same */
+        }
     }
 
     private static CartoonResponse ToResponse(

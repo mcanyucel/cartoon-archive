@@ -161,7 +161,7 @@ namespace CartoonArchive.Migrations
 
             migrationBuilder.Sql(
                 """
-                CREATE TRIGGER Cartoons_au_del AFTER UPDATE OF Description ON C
+                CREATE TRIGGER Cartoons_au_del AFTER UPDATE OF Description ON Cartoons
                 WHEN old.Description IS NOT NULL BEGIN
                     INSERT INTO CartoonsFts(CartoonsFts, rowid, Description)
                     VALUES ('delete', old.Id, old.Description);
@@ -171,7 +171,7 @@ namespace CartoonArchive.Migrations
 
             migrationBuilder.Sql(
                 """
-                CREATE TRIGGER Cartoons_au_ins AFTER UPDATE OF Description ON C
+                CREATE TRIGGER Cartoons_au_ins AFTER UPDATE OF Description ON Cartoons
                 WHEN new.Description IS NOT NULL BEGIN
                     INSERT INTO CartoonsFts(rowid, Description)
                     VALUES (new.Id, new.Description);

@@ -22,9 +22,7 @@ public sealed class ThumbnailGenerator(IWebHostEnvironment env)
             {
                 using var input =
                     SKBitmap.Decode(sourcePath)
-                    ?? throw new InvalidOperationException(
-                        $"Could not decode image at {sourcePath}"
-                    );
+                    ?? throw new ImageDecodeException($"Could not decode image at {sourcePath}");
 
                 var (targetW, targetH) = ResizeToFit(input.Width, input.Height, MaxDimension);
                 using var resized = input.Resize(

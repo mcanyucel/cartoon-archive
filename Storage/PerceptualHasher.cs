@@ -15,9 +15,7 @@ public sealed class PerceptualHasher
             {
                 using var input =
                     SKBitmap.Decode(imagePath)
-                    ?? throw new InvalidOperationException(
-                        $"Could not decode image at {imagePath}"
-                    );
+                    ?? throw new ImageDecodeException($"Could not decode image at {imagePath}");
 
                 var info = new SKImageInfo(Width, Height);
                 using var resized = input.Resize(
