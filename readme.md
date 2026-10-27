@@ -267,6 +267,25 @@ git push && git push --tags
 
 A GitHub Actions workflow at `.github/workflows/release.yml` picks up the tag, builds a multi-arch (`linux/amd64` and `linux/arm64`) image, and pushes to GHCR with both the version tag and `latest`.
 
+## Tests
+
+```
+dotnet test
+```
+
+Tests live in `tests/CartoonArchive.Tests`. They are split into two kinds:
+
+**Pure-function tests** cover the logic where a silent regression is most expensive: the SSRF allow/deny table (`SsrfGuard.IsPrivateOrLocal`), the FTS5 match builder that sits between user input and the query (`BuildFtsMatch`), snippet HTML escaping (`SafeSnippet`), tag identity (`TagNormalizer.Normalize`), the reverse-proxy auth allowlist, and Hamming distance. No database, no HTTP, no fixtures.
+
+**Share-link tests** boot the real app through `WebApplicationFactory` to exercise the three-stage link lifecycle — viewable, metadata-only, gone. The clock is injected as a `TimeProvider`, so `ShareAppFactory.Clock.Advance(...)` drives expiry instantly instead of waiting out `Share:TokenTtlHours`.
+
+The test host swaps out three things: the clock, the database (a throwaway file per fixture), and the content root, so a test run never touches `data/`. `Test_host_uses_a_throwaway_database` asserts that explicitly — if the config override ever stops winning over `appsettings.json`, that test fails rather than the suite quietly migrating your real archive.
+
+Two notes if you extend this:
+
+- The web project sits at the repo root, so its default `**/*.cs` glob would otherwise swallow the test sources. `CartoonArchive.csproj` excludes `tests/**` to prevent that.
+- Internals are exposed to the test assembly via `InternalsVisibleTo` rather than by making members public, so the testable helpers stay `internal`.
+
 
 ## Appendix: implementation notes
 

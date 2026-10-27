@@ -4,12 +4,15 @@ FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
 
 # Copy csproj first and restore. If only source changes, `restore` is cached
-COPY CartoonArchive.csproj ./ 
-RUN dotnet restore 
+COPY CartoonArchive.csproj ./
+RUN dotnet restore CartoonArchive.csproj
 
-# Copy the rest and publish 
+# Copy the rest and publish.
+# Name the project explicitly: the repo root also holds CartoonArchive.slnx, and a bare
+# `dotnet publish` would pick the solution and try to publish the test project too -
+# which isn't restored in this layer and has no business in the runtime image.
 COPY . .
-RUN dotnet publish -c Release -o /out --no-restore
+RUN dotnet publish CartoonArchive.csproj -c Release -o /out --no-restore
 
 # Runtime stage: smaller aspnet image, just runs the dll
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime 

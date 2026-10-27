@@ -38,7 +38,12 @@ public static class TagNormalizer
                 sb.Append(c);
         }
 
-        var result = sb.ToString();
+        // Decomposition can re-expose an uppercase base character, so the earlier
+        // ToLowerInvariant is not sufficient on its own: 'İ' (U+0130) passes through it
+        // untouched, then FormD splits it into ASCII 'I' plus a combining dot. Stripping
+        // the mark leaves a capital 'I' behind, which made "İzmir" normalize to "Izmir"
+        // and never match "izmir". Lowercase again now that the marks are gone.
+        var result = sb.ToString().ToLowerInvariant();
         if (result.Length == 0 || result.Length > MaxNormalizedLength)
             return null;
         return result;

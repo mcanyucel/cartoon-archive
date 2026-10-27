@@ -166,11 +166,103 @@ item in `next-steps.md` cheaper to implement.
 
 ---
 
-## 4. No test project — and the best targets need no infrastructure
+## 4. No test project — and the best targets need no infrastructure — DONE
 
-- [ ] Add test project
-- [ ] Pure-function tests
-- [ ] Share-link state machine tests
+- [x] Add test project
+- [x] Pure-function tests
+- [x] Share-link state machine tests
+
+**149 tests, ~2s.** `dotnet test` from the repo root. See the Tests section in
+[readme.md](readme.md) for the layout.
+
+### A real bug fell out of writing these
+
+`TagNormalizer` mis-handled the Turkish dotted capital `İ` (U+0130). It survives
+`ToLowerInvariant` untouched, and `FormD` then splits it into ASCII **capital** `I` plus a
+combining dot — so stripping marks left an uppercase letter behind:
+
+| Input | Was | Now |
+| --- | --- | --- |
+| `İzmir` | `Izmir` | `izmir` |
+| `izmir` | `izmir` | `izmir` |
+| `IZMIR` | `izmir` | `izmir` |
+
+Tagging something `İzmir` — the correct Turkish spelling, i.e. the one actually likely to be
+typed — created a **second, separate tag row** from `izmir`. Exactly the failure
+`TagNormalizer` exists to prevent, in the project's primary language.
+
+Fixed by lowercasing again *after* mark-stripping, since decomposition can re-expose an
+uppercase base character. Covered by `Every_spelling_of_a_dotted_i_name_normalizes_alike`
+and `Result_is_always_lowercase`.
+
+### TODO on the VPS: check for tag rows the old normalizer left behind
+
+The code fix stops *new* duplicates, but any already in the production database stay. The
+local `data/cartoons.db` is a scratch file, not the live archive, so this still needs
+checking against the VPS:
+
+```sql
+SELECT Id, Name FROM Tags WHERE Name <> lower(Name);
+```
+
+Any rows returned are stale spellings. If there are any, `scripts/fix-dotted-i-tags.sql`
+merges them: it renames tags with no lowercase twin in place, and for those with a twin it
+repoints the `CartoonTags` joins onto the canonical row and drops the stale one.
+
+```bash
+# back up first - this rewrites tag rows
+sqlite3 /app/data/cartoons.db ".backup /app/data/cartoons.db.bak"
+sqlite3 /app/data/cartoons.db < scripts/fix-dotted-i-tags.sql
+```
+
+Verified against a scratch database seeded with all three shapes of the problem — stale tag
+with no twin, stale + twin on different cartoons, and stale + twin on the *same* cartoon
+(the case that risks a `CartoonTags` primary-key collision). After running it: all tags
+lowercase and deduplicated, joins intact, `Cartoons.TagsText` recomputed, and FTS search
+returning the right rows for every merged tag. It is idempotent — a no-op once clean.
+
+The one subtlety baked into that script: it deletes and re-inserts join rows rather than
+`UPDATE`-ing `TagId`, because `CartoonTags` has `AFTER INSERT`/`AFTER DELETE` triggers but
+no `AFTER UPDATE`. An in-place update would silently leave `TagsText`, and therefore the FTS
+index, out of sync with the tags.
+
+### What's covered
+
+| Area | Notes |
+| --- | --- |
+| `SsrfGuard.IsPrivateOrLocal` | Every CIDR branch, both edges of each range, IPv4-mapped IPv6, `fc00::/7` boundary. Includes public addresses adjacent to private ranges, so the table can't quietly over-block either. |
+| `BuildFtsMatch` | Operator words, `:`, parens, `^`, embedded double quotes, empty-after-strip. |
+| `SafeSnippet` | Tag-formation is impossible; markers still upgrade. Documents the benign `%%OPEN%%`-in-description quirk. |
+| `TagNormalizer` | Case, whitespace, diacritics, dotless and dotted i, both length limits, fold-then-measure ordering, idempotence. |
+| Auth allowlist | Public assets, private paths, segment-aware prefixes, fingerprint stripping — plus that stripping isn't an auth bypass. |
+| `HammingDistance` | Sign bit and the all-ones case, which is where a non-`ulong` cast would break. |
+| Share lifecycle | All three stages, the exclusive upper bound, independent enforcement on `/s/{token}/image`, unknown-vs-expired indistinguishability, missing file on disk. |
+
+### Production changes this required
+
+- `TimeProvider` registered in `Program.cs` and injected into `ShareEndpoints` +
+  `ShareCleanupWorker`, replacing direct `DateTimeOffset.UtcNow` reads. This is the seam
+  that makes expiry testable.
+- Five helpers widened `private` → `internal` (`IsPrivateOrLocal`, `BuildFtsMatch`,
+  `SafeSnippet`, `IsAllowlisted`, `StripFingerprint`), with `InternalsVisibleTo` in the
+  csproj. The public API surface is unchanged.
+- `CartoonArchive.csproj` excludes `tests/**` from its compile glob — the web project is at
+  the repo root, so it would otherwise compile the test sources into the web assembly.
+- Added `CartoonArchive.sln`. **This required a Dockerfile fix:** the SDK prefers a solution
+  over a sibling `.csproj`, so the bare `dotnet publish` would have started publishing the
+  test project too, with `--no-restore`, breaking the image build. Both `restore` and
+  `publish` now name `CartoonArchive.csproj` explicitly. `tests/` and `*.sln` added to
+  `.dockerignore`. Verified with a real `docker build` — image builds and contains no test
+  assemblies.
+
+### Still open
+
+- [ ] **Nothing runs these automatically yet** — see item 10. The tests only pay off once CI
+      executes them on push.
+- [ ] `HandleUpload`'s orphan-file behaviour from item 1 is still verified by hand, not by a
+      test. It needs the storage directories to be injectable (they're derived from
+      `IWebHostEnvironment.ContentRootPath` today); the share tests get away with overriding
+      the content root wholesale, which is viable here too.
 
 Biggest structural gap. The security-critical logic is all pure functions, testable with
 zero DB or HTTP:

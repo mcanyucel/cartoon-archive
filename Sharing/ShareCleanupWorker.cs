@@ -4,7 +4,12 @@ using Microsoft.Extensions.Options;
 
 namespace CartoonArchive.Sharing;
 
-public sealed class ShareCleanupWorker(IServiceProvider services, IOptions<ShareOptions> options, ILogger<ShareCleanupWorker> logger) : BackgroundService
+public sealed class ShareCleanupWorker(
+    IServiceProvider services,
+    IOptions<ShareOptions> options,
+    TimeProvider time,
+    ILogger<ShareCleanupWorker> logger
+) : BackgroundService
 {
     private readonly TimeSpan _interval = TimeSpan.FromMinutes(options.Value.SweepIntervalMinutes);
 
@@ -18,7 +23,7 @@ public sealed class ShareCleanupWorker(IServiceProvider services, IOptions<Share
             {
                 using var scope = services.CreateScope();
                 var db = scope.ServiceProvider.GetRequiredService<CartoonArchiveDbContext>();
-                var now = DateTimeOffset.UtcNow;
+                var now = time.GetUtcNow();
                 // Raw SQL — SQLite's EF provider can't translate
                 // ExecuteDeleteAsync with a DateTimeOffset comparison.
                 var removed = await db.Database.ExecuteSqlAsync(

@@ -73,7 +73,7 @@ public sealed class ReverseProxyAuthMiddleware(
         await next(context);
     }
 
-    private static bool IsAllowlisted(PathString path)
+    internal static bool IsAllowlisted(PathString path)
     {
         var normalized = StripFingerprint(path);
         foreach (var prefix in AllowlistedPrefixes)
@@ -84,7 +84,7 @@ public sealed class ReverseProxyAuthMiddleware(
         return false;
     }
 
-    private static PathString StripFingerprint(PathString path)
+    internal static PathString StripFingerprint(PathString path)
     {
         var value = path.Value;
         if (string.IsNullOrEmpty(value))

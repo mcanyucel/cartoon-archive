@@ -122,7 +122,7 @@ public static class SsrfGuard
         }
     }
 
-    private static bool IsPrivateOrLocal(IPAddress addr)
+    internal static bool IsPrivateOrLocal(IPAddress addr)
     {
         if (IPAddress.IsLoopback(addr))
             return true;

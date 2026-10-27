@@ -27,6 +27,7 @@ public static class ShareEndpoints
         CartoonArchiveDbContext db,
         HttpContext http,
         IOptions<ShareOptions> options,
+        TimeProvider time,
         CancellationToken ct
     )
     {
@@ -34,11 +35,11 @@ public static class ShareEndpoints
         if (cartoon is null)
             return Results.NotFound();
         if (cartoon.Status != CartoonStatus.Ready)
-            return Results.Conflict(new { error = "Only ready cartoons can be shared. " });
+            return Results.Conflict(new { error = "Only ready cartoons can be shared." });
 
         var opts = options.Value;
         var token = GenerateToken();
-        var now = DateTimeOffset.UtcNow;
+        var now = time.GetUtcNow();
         var activeUntil = now.AddHours(opts.TokenTtlHours);
         var metadataUntil = activeUntil.AddHours(opts.MetadataTtlHours);
 
@@ -74,6 +75,7 @@ public static class ShareEndpoints
         CartoonArchiveDbContext db,
         HttpContext http,
         IOptions<ShareOptions> options,
+        TimeProvider time,
         CancellationToken ct
     )
     {
@@ -86,7 +88,7 @@ public static class ShareEndpoints
         if (share is null)
             return HtmlContent(BuildGoneHtml(), StatusCodes.Status410Gone);
 
-        var now = DateTimeOffset.UtcNow;
+        var now = time.GetUtcNow();
         if (now >= share.MetadataUntil)
             return HtmlContent(BuildGoneHtml(), StatusCodes.Status410Gone);
 
@@ -112,6 +114,7 @@ public static class ShareEndpoints
         ThumbnailGenerator thumbnails,
         ImageStorage storage,
         HttpContext http,
+        TimeProvider time,
         CancellationToken ct
     )
     {
@@ -122,7 +125,7 @@ public static class ShareEndpoints
 
         // Sub-route must enforce ActiveUntil independently. Serving bytes past
         // the active window would defeat the redaction the HTML page performs.
-        if (share is null || DateTimeOffset.UtcNow >= share.ActiveUntil)
+        if (share is null || time.GetUtcNow() >= share.ActiveUntil)
             return Results.StatusCode(StatusCodes.Status410Gone);
 
         var thumbPath = thumbnails.GetPath(share.Cartoon.Sha256);

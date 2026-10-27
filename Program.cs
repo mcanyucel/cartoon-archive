@@ -55,6 +55,9 @@ builder.Services.AddDbContext<CartoonArchiveDbContext>(options =>
 );
 
 // Custom Services
+// Share-link expiry reads the clock through TimeProvider so the three-stage lifecycle
+// (active -> metadata-only -> gone) is testable without waiting out the real TTL.
+builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<ImageStorage>();
 builder.Services.AddSingleton<ThumbnailGenerator>();
 builder.Services.AddHostedService<CaptionWorker>();

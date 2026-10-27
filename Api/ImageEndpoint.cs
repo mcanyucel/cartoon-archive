@@ -259,7 +259,7 @@ public static class ImageEndpoints
         public string Snippet { get; set; } = "";
     }
 
-    private static string SafeSnippet(string raw) =>
+    internal static string SafeSnippet(string raw) =>
         System
             .Text.Encodings.Web.HtmlEncoder.Default.Encode(raw)
             .Replace("%%OPEN%%", "<mark>")
@@ -274,7 +274,7 @@ public static class ImageEndpoints
     /// such as 'firavunun' 'firavuna' 'firavundan'.
     /// Note that it cannot handle stem changes and reverse search (finding stem from a declined word)
     /// </summary>
-    private static string BuildFtsMatch(string q)
+    internal static string BuildFtsMatch(string q)
     {
         var tokens = q.Split(new[] { ' ', '\t', '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries)
             .Select(t => t.Replace("\"", "")) // double-quote is the only char we can't escape inside a phrase
