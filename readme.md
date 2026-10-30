@@ -256,16 +256,18 @@ If the header is missing on a protected path, the app returns 401. It never fall
 
 ### Releases
 
-Releases are cut by tagging in git:
+The git tag is the single source of truth for the version. Nothing in the repo needs editing to cut a release:
 
 ```
-# bump <Version> in CartoonArchive.csproj
-git commit -am "Bump version to 0.1.1"
-git tag v0.1.1
+git tag v0.8.0
 git push && git push --tags
 ```
 
-A GitHub Actions workflow at `.github/workflows/release.yml` picks up the tag, builds a multi-arch (`linux/amd64` and `linux/arm64`) image, and pushes to GHCR with both the version tag and `latest`.
+A GitHub Actions workflow at `.github/workflows/release.yml` picks up the tag, strips the leading `v`, and passes the result to the Docker build as a `VERSION` build arg, which becomes `-p:Version=` on `dotnet publish`. The same value tags the image. So the version shown in the app footer and the GHCR image tag are the same string by construction.
+
+It builds multi-arch (`linux/amd64` and `linux/arm64`) and pushes to GHCR under both the version tag and `latest`.
+
+The `<Version>` in `CartoonArchive.csproj` is a local-dev fallback (`0.0.0-dev`) and is deliberately not bumped per release — a locally-built image reporting `0.0.0-dev` is correct, because it isn't a release.
 
 ## Tests
 

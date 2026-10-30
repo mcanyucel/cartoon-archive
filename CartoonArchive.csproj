@@ -5,7 +5,9 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UserSecretsId>4fe6c41e-9978-4b43-af96-c74f1f6906ca</UserSecretsId>
-    <Version>0.5.0</Version>
+    <!-- Local-dev fallback only. Releases get their version from the git tag,
+         injected as a Docker build arg (see Dockerfile / release.yml). -->
+    <Version>0.0.0-dev</Version>
   </PropertyGroup>
 
   <ItemGroup>

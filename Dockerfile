@@ -12,7 +12,12 @@ RUN dotnet restore CartoonArchive.csproj
 # `dotnet publish` would pick the solution and try to publish the test project too -
 # which isn't restored in this layer and has no business in the runtime image.
 COPY . .
-RUN dotnet publish CartoonArchive.csproj -c Release -o /out --no-restore
+
+# The release version comes from the git tag, passed in by CI. The csproj <Version> is
+# only a local-dev fallback, so the footer can never drift from the image tag again.
+# Declared after COPY so bumping it doesn't invalidate the copy layer.
+ARG VERSION=0.0.0-dev
+RUN dotnet publish CartoonArchive.csproj -c Release -o /out --no-restore -p:Version=$VERSION
 
 # Runtime stage: smaller aspnet image, just runs the dll
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime 
