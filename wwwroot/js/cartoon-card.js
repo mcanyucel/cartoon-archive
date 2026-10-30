@@ -3,12 +3,47 @@ window.CartoonCard = (function () {
   const STATUS_READY = 1;
   const STATUS_FAILED = 2;
 
-  const cache = new Map();
+  // ---- Navigation sources -------------------------------------------------
+  // A source is whatever the lightbox is currently walking through: an ordered
+  // list of ids, a way to resolve an id to a full cartoon object, and a hook to
+  // fetch more. Two of them exist. The grid source is the page's rendered items,
+  // always fully hydrated. The random source (built in random-browse.js) is a
+  // seeded permutation of every Ready id with only a sliding window hydrated, so
+  // a large archive doesn't mean holding every object in memory.
+  //
+  // They keep separate Maps deliberately: the gallery's background poll calls
+  // renderList, which clears the grid source — that must not pull the floor out
+  // from under an open random walk.
+
+  function setOrder(source, ids) {
+    source.order = ids;
+    source.positions = new Map(ids.map((id, i) => [id, i]));
+  }
+
+  function createSource(mode) {
+    const source = {
+      mode,
+      order: [],
+      // id -> index. Avoids an O(n) indexOf on every keypress and preload; the
+      // random bag can hold the whole archive.
+      positions: new Map(),
+      items: new Map(),
+      indexOf: (id) => source.positions.get(id) ?? -1,
+      get: (id) => source.items.get(id),
+      put: (c) => source.items.set(c.id, c),
+      drop: (id) => source.items.delete(id),
+      // Grid items are already on the page. The random source overrides both.
+      ensure: () => Promise.resolve(),
+      evict: () => {},
+    };
+    return source;
+  }
+
+  const gridSource = createSource("grid");
+  let source = gridSource;
   let currentCartoon = null;
-  // Ids in display order — populated by renderList, consumed by lightbox
-  // prev/next navigation. Kept separate from the cache Map because the cache
-  // survives across re-renders and stale entries would poison the ordering.
-  let currentOrder = [];
+  // Set by random browse so it can mirror the cursor into the URL.
+  let navigationListener = null;
 
   function escapeHtml(str) {
     return String(str)
@@ -68,13 +103,16 @@ window.CartoonCard = (function () {
   }
 
   function renderList(cartoons) {
-    cache.clear();
-    currentOrder = cartoons.map((c) => c.id);
+    gridSource.items.clear();
+    setOrder(
+      gridSource,
+      cartoons.map((c) => c.id),
+    );
     return cartoons.map(renderCard).join("");
   }
 
   function renderCard(c) {
-    cache.set(c.id, c);
+    gridSource.put(c);
     const classes = ["card", "h-100"];
     if (c.status === STATUS_PENDING) classes.push("opacity-75");
     if (c.status === STATUS_FAILED) classes.push("border-danger");
@@ -237,10 +275,14 @@ window.CartoonCard = (function () {
   // Warm the browser cache for the immediate neighbors so arrow-key
   // navigation feels instant instead of blank-frame-then-image.
   function preloadNeighbors(index) {
+    // Deliberately only ±1. This preloads imageUrl, which is the full-res image,
+    // not the thumbnail — widening the window means several megabytes fetched
+    // speculatively per step, which is exactly wrong on the mobile connections
+    // where random browse gets the most use.
     for (const delta of [-1, 1]) {
-      const id = currentOrder[index + delta];
+      const id = source.order[index + delta];
       if (!id) continue;
-      const neighbor = cache.get(id);
+      const neighbor = source.get(id);
       if (neighbor?.imageUrl) {
         const img = new Image();
         img.src = neighbor.imageUrl;
@@ -248,14 +290,37 @@ window.CartoonCard = (function () {
     }
   }
 
-  function navigate(delta) {
-    if (!currentCartoon) return;
-    const idx = currentOrder.indexOf(currentCartoon.id);
-    if (idx === -1) return;
-    const nextIdx = idx + delta;
-    if (nextIdx < 0 || nextIdx >= currentOrder.length) return;
-    const next = cache.get(currentOrder[nextIdx]);
-    if (next) openLightbox(next);
+  // Guards against a held-down arrow key stacking overlapping hydrations.
+  let navigating = false;
+
+  async function navigate(delta) {
+    if (navigating || !currentCartoon) return;
+    const step = delta < 0 ? -1 : 1;
+    navigating = true;
+    try {
+      const idx = source.indexOf(currentCartoon.id);
+      if (idx === -1) return;
+
+      let nextIdx = idx + delta;
+      // The loop exists only to step over holes: ids the shuffle bag still names
+      // but the server no longer has, because they were deleted after the bag
+      // was built. A hole is skipped, not a dead end.
+      while (nextIdx >= 0 && nextIdx < source.order.length) {
+        await source.ensure(nextIdx);
+        const next = source.get(source.order[nextIdx]);
+        if (next) {
+          openLightbox(next);
+          return;
+        }
+        source.order.splice(nextIdx, 1);
+        setOrder(source, source.order);
+        // Going forward, the next candidate slides into the index we just
+        // vacated. Going back, it is one lower.
+        if (step < 0) nextIdx -= 1;
+      }
+    } finally {
+      navigating = false;
+    }
   }
 
   // Horizontal swipe on the image area advances the lightbox. Threshold-based
@@ -307,9 +372,31 @@ window.CartoonCard = (function () {
   function updateNavButtons(modal) {
     const prevBtn = modal.querySelector("#cartoon-lightbox-prev");
     const nextBtn = modal.querySelector("#cartoon-lightbox-next");
-    const idx = currentCartoon ? currentOrder.indexOf(currentCartoon.id) : -1;
+    const idx = currentCartoon ? source.indexOf(currentCartoon.id) : -1;
+    const atEnd = idx === -1 || idx >= source.order.length - 1;
     if (prevBtn) prevBtn.disabled = idx <= 0;
-    if (nextBtn) nextBtn.disabled = idx === -1 || idx >= currentOrder.length - 1;
+    if (nextBtn) nextBtn.disabled = atEnd;
+
+    const random = source.mode === "random";
+    const posEl = modal.querySelector("#cartoon-lightbox-position");
+    if (posEl) {
+      posEl.classList.toggle("d-none", !random || idx === -1);
+      if (random && idx !== -1)
+        posEl.textContent = `${idx + 1} / ${source.order.length}`;
+    }
+
+    // End of the bag is an explicit stop rather than a silent wrap: "nothing
+    // repeats" has to stay literally true, so the only way onward is a reshuffle.
+    const reshuffleBtn = modal.querySelector("#cartoon-lightbox-reshuffle");
+    if (reshuffleBtn)
+      reshuffleBtn.classList.toggle("d-none", !(random && atEnd));
+    if (random && atEnd) {
+      const errEl = modal.querySelector("#cartoon-lightbox-error");
+      if (errEl) {
+        errEl.textContent = `That's all ${source.order.length} — nothing repeated.`;
+        errEl.className = "small me-auto text-muted";
+      }
+    }
   }
 
   function openLightbox(c) {
@@ -328,8 +415,12 @@ window.CartoonCard = (function () {
     setEditMode(modal, false);
     setRegenMode(modal, false);
     updateNavButtons(modal);
-    const idx = currentOrder.indexOf(c.id);
-    if (idx !== -1) preloadNeighbors(idx);
+    const idx = source.indexOf(c.id);
+    if (idx !== -1) {
+      preloadNeighbors(idx);
+      source.evict(idx);
+      if (navigationListener) navigationListener(source, idx);
+    }
 
     // Edit + Regenerate are only meaningful for Ready cartoons.
     const descControls = modal.querySelector("#cartoon-lightbox-desc-controls");
@@ -371,8 +462,11 @@ window.CartoonCard = (function () {
       if (!img) return;
       const item = img.closest(".masonry-item");
       const id = Number(item?.dataset.id);
-      const c = cache.get(id);
+      const c = gridSource.get(id);
       if (!c) return;
+      // Clicking a thumbnail always means "walk the grid", even if a random
+      // walk was open a moment ago.
+      source = gridSource;
       openLightbox(c);
     });
 
@@ -482,7 +576,7 @@ window.CartoonCard = (function () {
         if (response.ok) {
           const updated = await response.json();
           currentCartoon = updated;
-          cache.set(updated.id, updated);
+          source.put(updated);
           if (descEl) descEl.textContent = updated.description ?? "";
           setEditMode(modal, false);
           if (descControls) descControls.classList.remove("d-none");
@@ -528,7 +622,7 @@ window.CartoonCard = (function () {
           body: JSON.stringify(language ? { language } : {}),
         });
         if (response.ok) {
-          cache.delete(c.id);
+          source.drop(c.id);
           currentCartoon = null;
           bootstrap.Modal.getOrCreateInstance(modal).hide();
           if (onAfterDelete) await onAfterDelete();
@@ -708,7 +802,7 @@ window.CartoonCard = (function () {
         if (response.ok) {
           const data = await response.json();
           currentCartoon = { ...currentCartoon, tags: data.tags };
-          cache.set(currentCartoon.id, currentCartoon);
+          source.put(currentCartoon);
           if (tagsViewEl)
             tagsViewEl.innerHTML = renderTagChips(currentCartoon.tags).replace(
               /mb-1/,
@@ -744,7 +838,7 @@ window.CartoonCard = (function () {
           method: "DELETE",
         });
         if (response.ok) {
-          cache.delete(c.id);
+          source.drop(c.id);
           currentCartoon = null;
           bootstrap.Modal.getOrCreateInstance(modal).hide();
           if (onAfterDelete) await onAfterDelete();
@@ -766,6 +860,26 @@ window.CartoonCard = (function () {
     });
   }
 
+  /// Hands the lightbox a different source and opens it at `index`. Returns
+  /// false when that slot can't be hydrated, so the caller can report it
+  /// rather than opening an empty modal.
+  async function openSource(newSource, index) {
+    source = newSource;
+    await source.ensure(index);
+    const c = source.get(source.order[index]);
+    if (!c) return false;
+    openLightbox(c);
+    return true;
+  }
+
+  function useGridSource() {
+    source = gridSource;
+  }
+
+  function setNavigationListener(fn) {
+    navigationListener = fn;
+  }
+
   return {
     STATUS_PENDING,
     STATUS_READY,
@@ -778,5 +892,10 @@ window.CartoonCard = (function () {
     attachRetryHandler,
     attachLightboxHandler,
     attachShareHandler,
+    createSource,
+    setOrder,
+    openSource,
+    useGridSource,
+    setNavigationListener,
   };
 })();

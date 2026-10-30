@@ -4,7 +4,12 @@
     ViewData["Title"] = "Gallery";
 }
 
-<h2>Gallery</h2>
+<div class="d-flex align-items-center justify-content-between mb-2">
+    <h2 class="mb-0">Gallery</h2>
+    <button type="button" class="btn btn-outline-primary btn-sm" id="random-browse">
+        🎲 Random
+    </button>
+</div>
 <div id="gallery-status" class="small mb-2"></div>
 <div id="gallery" class="masonry-gallery"></div>
 <nav id="gallery-pager" class="mt-3" aria-label="Gallery pages"></nav>
@@ -12,4 +17,5 @@
 @section Scripts {
     <script src="~/js/cartoon-card.js" asp-append-version="true"></script>
     <script src="~/js/gallery.js" asp-append-version="true"></script>
+    <script src="~/js/random-browse.js" asp-append-version="true"></script>
 }

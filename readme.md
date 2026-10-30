@@ -63,6 +63,20 @@ The `/s/{token}/image` sub-route serves the thumbnail (fallback to full-res if t
 
 A background sweeper (`Sharing/ShareCleanupWorker.cs`) removes rows past `MetadataUntil` on `Share:SweepIntervalMinutes` (default 10) so the table stays small even after heavy sharing.
 
+### Random browse
+
+Search is for when you know what you are looking for. Random browse is for when you do not — you just want to read comics. Hitting **🎲 Random** on the gallery opens the lightbox on a random item and lets you walk the whole archive with arrow keys, chevrons, or swipes.
+
+The important part is what it is *not*. It is not a button that calls `Math.random()` and shows you whatever it lands on:
+
+* **Nothing repeats.** The walk is a genuine shuffled permutation of the archive, not repeated sampling. Sampling with a "don't show me what I've already seen" filter degrades badly — the closer you get to the end, the more often it rolls something you have already read, and it never cleanly finishes. A permutation visits every item exactly once by construction.
+* **It covers the whole archive, not the current page.** Normal lightbox navigation walks whatever the grid rendered, so it stops at the 24-item page boundary. Random browse is built from every `Ready` item, so it crosses pages transparently. A counter in the lightbox footer shows where you are (`17 / 216`).
+* **It stops honestly at the end.** When you have seen everything, the walk stops and offers a reshuffle instead of silently wrapping around. "Nothing repeats" would otherwise quietly stop being true.
+* **Back works.** Prev walks backwards through what you have already seen, so overshooting something good is recoverable.
+* **The walk is resumable and shareable.** The shuffle is reproducible from a seed, and the seed plus your position live in the URL (`?shuffle=k3f9a2&at=17`). Reload the page, or send the link to someone on the same instance, and the same walk resumes in the same place.
+
+Only `Ready` items are included. Items still being captioned, or that failed, have no caption and would render as a half-broken card in the middle of a reading session.
+
 ### Near-duplicate detection (weak, but present)
 
 When you upload an image, the app computes a perceptual hash (dHash) and compares it against the hashes of existing items. If any come within a threshold Hamming distance, the upload page shows a warning listing the likely duplicates and lets you decide whether to keep the new copy or discard it.
@@ -410,6 +424,19 @@ The NuGet library `CoenM.ImageSharp.ImageHash` requires `SixLabors.ImageSharp`. 
 * `HtmlEncoder.Default.Encode(...)`: every interpolated value in the templates goes through this. Razor does it automatically for `@Model.X` in cshtml, but these templates are hand-built strings.
 * `Results.File(path, contentType)`: streams the file bytes with the right content type. `Cache-Control: no-store` is set beforehand so browsers do not cache past expiry.
 * Legacy `?k=` URLs still resolve. The new handler ignores query params, so previously-issued links keep working — they render the new HTML instead of the old raw-image response, which is a UX upgrade rather than a break.
+
+### Random browse
+
+The permutation lives entirely on the client; the server stays stateless.
+
+* **Two endpoints.** `GET /api/images/ids` returns every `Ready` id ascending — the ascending part is load-bearing, since the client shuffles that exact list and a different server-side order would stop a given seed reproducing a given walk. `GET /api/images/batch?ids=…` hydrates up to 100 ids at a time, preserving the requested order.
+* **Seeded shuffle, not `Math.random()`.** A 32-bit seed drives a mulberry32 PRNG through a Fisher-Yates shuffle. Seeding is what makes the walk reproducible from the URL; without URL sync there would be no reason not to use `Math.random()`. Verified over a 10,000-id list: true permutation, nothing lost or duplicated, one fixed point, no positional bias across 5,000 seeds.
+* **Full id list, windowed objects.** The shuffled id array is held whole — it *is* the no-repeat guarantee, so nothing may be evicted from it. At ~6 bytes per id that is ~60 KB for a 10,000-image archive, fetched once. Full cartoon objects are the expensive part (~1 KB each) and are hydrated only in a sliding window around the cursor.
+* **Sliding window, not a ring buffer.** A ring evicts in insertion order, which thrashes the moment the user reverses direction: each backward step evicts the entry the next backward step needs. The window is centred on the cursor instead — hydrate `[i-5, i+10]`, evict outside `[i-30, i+70]`. The asymmetry is deliberate: forward is the common direction, so a backward scrub keeps what it already passed. Note the forward figure only binds during a backward walk; a pure forward walk peaks at ~41 hydrated entries because hydration never runs more than 10 ahead.
+* **The fetch band is two-sided on purpose.** Hydrating only ahead of the cursor makes a backward walk fetch exactly one id per step, since everything in front is already cached and only the cursor itself is missing. Measured over 50 out-of-window backward steps: 19 requests one-sided, 4 two-sided.
+* **Holes are skipped, not errors.** A bag built minutes ago can name a cartoon deleted since. `batch` omits unknown ids rather than failing, and the client splices them out of the order and continues in the same direction.
+* **Two navigation sources, two Maps.** The lightbox walks a *source* (`order`, `positions`, `items`, `ensure`, `evict`). The grid source holds what the page rendered; the random source holds the bag. They keep separate Maps because the gallery's background poll calls `renderList`, which clears the grid source — sharing one Map would pull the floor out from under an open random walk. The `positions` id→index Map also replaced an `indexOf` that ran on every keypress, which was fine at 24 items and is not at 10,000.
+* **Known caveat:** the permutation is a function of (seed, id list), so uploading an image changes it. A `?shuffle=` link shared before an upload resumes somewhere else afterwards. Acceptable at personal scale; documented so it does not come back as a surprise.
 
 ### SSRF prevention on URL fetching
 

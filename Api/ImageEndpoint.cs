@@ -25,6 +25,8 @@ public static class ImageEndpoints
         group.MapPost("/", HandleUpload).DisableAntiforgery();
         group.MapGet("/", HandleList);
         group.MapGet("/search", HandleSearch);
+        group.MapGet("/ids", HandleIds);
+        group.MapGet("/batch", HandleBatch);
         group.MapPost("/{id:int}/retry", HandleRetry);
         group.MapPost("/{id:int}/regenerate", HandleRegenerate);
         group.MapPatch("/{id:int}", HandleEdit);
@@ -200,6 +202,79 @@ public static class ImageEndpoints
                 total,
             }
         );
+    }
+
+    /// <summary>
+    /// Every Ready cartoon id, ascending. Backs the random-browse shuffle bag: the client
+    /// permutes this list with a seeded PRNG, so the order here has to be deterministic or
+    /// the same seed would stop reproducing the same walk. Pending and Failed rows are
+    /// excluded - they have no caption and render as a half-broken card mid-browse.
+    /// </summary>
+    private static async Task<IResult> HandleIds(
+        CartoonArchiveDbContext db,
+        CancellationToken ct
+    )
+    {
+        var ids = await db
+            .Cartoons.Where(c => c.Status == CartoonStatus.Ready)
+            .OrderBy(c => c.Id)
+            .Select(c => c.Id)
+            .ToListAsync(ct);
+
+        return Results.Ok(new { ids });
+    }
+
+    private const int MaxBatchIds = 100;
+
+    /// <summary>
+    /// Hydrates a handful of ids at once. Random browse holds the full id permutation but
+    /// only a sliding window of full objects, and tops the window up through here.
+    /// </summary>
+    private static async Task<IResult> HandleBatch(
+        [FromQuery] string? ids,
+        CartoonArchiveDbContext db,
+        CancellationToken ct
+    )
+    {
+        if (string.IsNullOrWhiteSpace(ids))
+            return Results.Ok(new { items = Array.Empty<CartoonResponse>() });
+
+        var requested = new List<int>();
+        foreach (
+            var part in ids.Split(
+                ',',
+                StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries
+            )
+        )
+        {
+            if (!int.TryParse(part, out var parsed))
+                return Results.BadRequest(new { error = $"'{part}' is not a valid id." });
+            requested.Add(parsed);
+        }
+
+        if (requested.Count > MaxBatchIds)
+            return Results.BadRequest(
+                new { error = $"At most {MaxBatchIds} ids per batch; got {requested.Count}." }
+            );
+
+        var distinct = requested.Distinct().ToList();
+        var cartoons = await db
+            .Cartoons.Where(c => distinct.Contains(c.Id))
+            .AsNoTracking()
+            .ToListAsync(ct);
+
+        var tagsMap = await TagLoader.LoadAsync(db, cartoons.Select(c => c.Id).ToList(), ct);
+        var byId = cartoons.ToDictionary(c => c.Id);
+
+        // Requested order is preserved, and ids that no longer exist are simply absent -
+        // a shuffle bag built minutes ago can name a cartoon deleted since, and that is
+        // a hole for the client to skip rather than an error.
+        var items = distinct
+            .Where(byId.ContainsKey)
+            .Select(id => ToResponse(byId[id], tagsMap.GetValueOrDefault(id)))
+            .ToList();
+
+        return Results.Ok(new { items });
     }
 
     private static async Task<IResult> HandleSearch(
