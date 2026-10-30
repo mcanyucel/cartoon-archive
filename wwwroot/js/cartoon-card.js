@@ -240,6 +240,7 @@ window.CartoonCard = (function () {
     actions.classList.toggle("d-flex", !confirming);
     confirm.classList.toggle("d-none", !confirming);
     confirm.classList.toggle("d-flex", confirming);
+    refreshViewerBusy(modal);
   }
 
   function setEditMode(modal, editing) {
@@ -248,6 +249,7 @@ window.CartoonCard = (function () {
     if (!controls || !form) return;
     form.classList.toggle("d-none", !editing);
     if (editing) controls.classList.add("d-none");
+    refreshViewerBusy(modal);
   }
 
   function setRegenMode(modal, regenerating) {
@@ -256,6 +258,7 @@ window.CartoonCard = (function () {
     if (!controls || !form) return;
     form.classList.toggle("d-none", !regenerating);
     if (regenerating) controls.classList.add("d-none");
+    refreshViewerBusy(modal);
   }
 
   function setTagsMode(modal, editing) {
@@ -264,6 +267,7 @@ window.CartoonCard = (function () {
     if (!controls || !form) return;
     form.classList.toggle("d-none", !editing);
     if (editing) controls.classList.add("d-none");
+    refreshViewerBusy(modal);
   }
 
   // Warm the browser cache for the immediate neighbors so arrow-key
@@ -393,6 +397,62 @@ window.CartoonCard = (function () {
     }
   }
 
+  /// Fades the viewer chrome out once the user stops interacting, so a
+  /// full-bleed drawing is not permanently covered top and bottom. Any pointer,
+  /// touch or key activity brings it back.
+  const IDLE_MS = 2600;
+
+  function attachIdleFade(wrap, modal) {
+    let timer = null;
+
+    function wake() {
+      wrap.classList.remove("is-idle");
+      clearTimeout(timer);
+      timer = setTimeout(() => wrap.classList.add("is-idle"), IDLE_MS);
+    }
+
+    for (const ev of ["pointermove", "pointerdown", "touchstart", "keydown"]) {
+      wrap.addEventListener(ev, wake, { passive: true });
+    }
+    // Keys are handled at the document level while the modal is open, so the
+    // wrap alone would never see arrow-key navigation.
+    document.addEventListener("keydown", () => {
+      if (modal.classList.contains("show")) wake();
+    });
+
+    modal.addEventListener("shown.bs.modal", wake);
+    modal.addEventListener("hidden.bs.modal", () => {
+      clearTimeout(timer);
+      wrap.classList.remove("is-idle", "is-busy");
+    });
+  }
+
+  /// Pins the chrome while any panel is open. Recomputed from the DOM rather
+  /// than tracked as a flag, so closing one panel cannot un-pin the chrome while
+  /// another is still showing.
+  function refreshViewerBusy(modal) {
+    const panelOpen = ["edit", "regen", "tags"].some(
+      (k) =>
+        modal.querySelector(`#cartoon-lightbox-${k}-form`) &&
+        !modal
+          .querySelector(`#cartoon-lightbox-${k}-form`)
+          .classList.contains("d-none"),
+    );
+    const confirming = !modal
+      .querySelector("#cartoon-lightbox-confirm")
+      ?.classList.contains("d-none");
+    modal
+      .querySelector(".cartoon-lightbox-image-wrap")
+      ?.classList.toggle("is-busy", panelOpen || confirming);
+  }
+
+  /// Publishes the image's intrinsic width to CSS so the stylesheet can cap how
+  /// far a small drawing is allowed to be enlarged. See .ka-viewer-stage img.
+  function applyNaturalSize(img) {
+    if (!img?.naturalWidth) return;
+    img.style.setProperty("--ka-nat-w", String(img.naturalWidth));
+  }
+
   function openLightbox(c) {
     const modal = document.getElementById("cartoon-lightbox");
     if (!modal || typeof bootstrap === "undefined") return;
@@ -424,8 +484,14 @@ window.CartoonCard = (function () {
     if (descControls)
       descControls.classList.toggle("d-none", c.status !== STATUS_READY);
 
-    modal.querySelector("#cartoon-lightbox-image").src = c.imageUrl;
-    modal.querySelector("#cartoon-lightbox-image").alt = c.description ?? "";
+    const imgEl = modal.querySelector("#cartoon-lightbox-image");
+    // Clear before swapping src so the outgoing image's dimensions can't cap
+    // the incoming one for the frame before its load event fires.
+    imgEl.style.removeProperty("--ka-nat-w");
+    imgEl.src = c.imageUrl;
+    imgEl.alt = c.description ?? "";
+    // A cached image may already be complete, in which case load never fires.
+    if (imgEl.complete) applyNaturalSize(imgEl);
     // The original filename is deliberately not shown. For URL uploads it is a
     // hash-like fragment of a remote path and means nothing to a reader.
     modal.querySelector("#cartoon-lightbox-language").textContent =
@@ -534,6 +600,11 @@ window.CartoonCard = (function () {
 
     const imgWrap = modal.querySelector(".cartoon-lightbox-image-wrap");
     if (imgWrap) attachSwipe(imgWrap);
+    if (imgWrap) attachIdleFade(imgWrap, modal);
+
+    modal
+      .querySelector("#cartoon-lightbox-image")
+      ?.addEventListener("load", (e) => applyNaturalSize(e.currentTarget));
 
     // Left/right arrows navigate; ignore when the user is typing in the
     // edit textarea or regen select so keystrokes don't get hijacked.

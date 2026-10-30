@@ -376,27 +376,50 @@ footer.footer {
   overflow: hidden;
 }
 
+/* No padding: the drawing runs edge to edge and the chrome floats over it on
+   translucent gradients. The archive is almost entirely height-constrained
+   portrait scans, so the 136px of vertical padding this used to reserve was the
+   single largest thing making images smaller than they needed to be. */
 .ka-viewer-stage {
   position: absolute;
   inset: 0;
   display: grid;
   place-items: center;
-  padding: 3.5rem 4.5rem 5rem;
 }
 
-@media (max-width: 575.98px) {
-  .ka-viewer-stage {
-    padding: 3.25rem 0.75rem 6rem;
-  }
-}
+/* Scales small drawings UP as well as large ones down. max-width/max-height
+   alone only ever shrink, so a 183x240 original used to render as a postage
+   stamp in the middle of a full-screen viewer.
 
+   Upscaling is capped at 4x natural size. Nothing in this archive is wider than
+   ~1370px and most are under 700px, so without a ceiling a small scan would be
+   stretched arbitrarily far; with one, the height constraint usually binds
+   first anyway. --ka-nat-w is set from naturalWidth by cartoon-card.js on each
+   load; the fallback keeps large images correct if that never runs. */
 .ka-viewer-stage img {
-  max-width: 100%;
-  max-height: 100%;
-  width: auto;
+  width: min(100%, calc(var(--ka-nat-w, 99999) * 4px));
   height: auto;
+  max-height: 100%;
+  object-fit: contain;
   border-radius: 3px;
   box-shadow: 0 12px 48px rgba(0, 0, 0, 0.5);
+}
+
+/* Chrome fades out after a few idle seconds so a full-bleed drawing is not
+   permanently covered at top and bottom, and comes straight back on any
+   pointer, touch or key activity. Panels opt out via .is-busy - losing the
+   Save button mid-edit because you paused to read would be hostile. */
+.ka-viewer-top,
+.ka-viewer-sheet,
+.cartoon-lightbox-nav {
+  transition: opacity 260ms ease;
+}
+
+.cartoon-lightbox-image-wrap.is-idle:not(.is-busy) .ka-viewer-top,
+.cartoon-lightbox-image-wrap.is-idle:not(.is-busy) .ka-viewer-sheet,
+.cartoon-lightbox-image-wrap.is-idle:not(.is-busy) .cartoon-lightbox-nav {
+  opacity: 0;
+  pointer-events: none;
 }
 
 .ka-viewer-top {
