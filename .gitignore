@@ -481,5 +481,9 @@ $RECYCLE.BIN/
 # Vim temporary swap files
 *.swp
 
-# App runtime data 
+# App runtime data
 data/
+
+# Claude Code: settings.json is shared and committed; the .local variant holds
+# machine-specific permission grants and should stay out of the repo.
+.claude/settings.local.json
