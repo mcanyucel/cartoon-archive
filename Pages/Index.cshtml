@@ -4,15 +4,16 @@
     ViewData["Title"] = "Gallery";
 }
 
-<div class="d-flex align-items-center justify-content-between mb-2">
-    <h2 class="mb-0">Gallery</h2>
-    <button type="button" class="btn btn-outline-primary btn-sm" id="random-browse">
-        🎲 Random
+<div class="d-flex align-items-center justify-content-between gap-3 mb-3">
+    <span class="ka-meta" id="gallery-count"></span>
+    <button type="button" class="btn btn-primary btn-sm d-inline-flex align-items-center gap-2" id="random-browse">
+        <svg aria-hidden="true" style="width:15px;height:15px"><use href="#i-dice"></use></svg>
+        Random
     </button>
 </div>
 <div id="gallery-status" class="small mb-2"></div>
 <div id="gallery" class="masonry-gallery"></div>
-<nav id="gallery-pager" class="mt-3" aria-label="Gallery pages"></nav>
+<nav id="gallery-pager" class="mt-4 d-flex justify-content-center" aria-label="Gallery pages"></nav>
 
 @section Scripts {
     <script src="~/js/cartoon-card.js" asp-append-version="true"></script>

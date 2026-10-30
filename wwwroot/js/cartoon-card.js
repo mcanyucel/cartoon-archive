@@ -62,44 +62,48 @@ window.CartoonCard = (function () {
     }
   }
 
-  function renderTagChips(tags) {
+  /// Tag chips as links to the search. `variant` picks the surface they sit on:
+  /// "dark" for the viewer's scrim, "light" for panels and page content.
+  function renderTagChips(tags, variant = "light") {
     if (!tags || tags.length === 0) return "";
-    const chips = tags
+    const cls = variant === "dark" ? "ka-chip" : "ka-tag";
+    return tags
       .map(
         (t) =>
-          `<a href="/Search?q=${encodeURIComponent(t)}" class="badge text-bg-secondary text-decoration-none">${escapeHtml(t)}</a>`,
+          `<a href="/Search?q=${encodeURIComponent(t)}" class="${cls}">${escapeHtml(t)}</a>`,
       )
       .join("");
-    return `<div class="d-flex flex-wrap gap-1 mb-1">${chips}</div>`;
   }
 
-  function renderBody(c) {
+  /// Caption and tags over the bottom of the thumbnail, revealed on hover. The
+  /// grid used to carry a language badge, a Share button, tag chips and a
+  /// <details> disclosure on every tile - five controls arguing with the drawing.
+  function renderScrim(c) {
+    // `snippet` arrives already HTML-escaped by the server with <mark> markers
+    // applied afterwards, so it must not be escaped again here.
+    const caption = c.snippet ?? escapeHtml(c.description ?? "");
+    const chips = renderTagChips(c.tags, "dark");
+    if (!caption && !chips) return "";
+    return `
+        <div class="ka-scrim">
+            ${caption ? `<p class="ka-scrim-caption">${caption}</p>` : ""}
+            ${chips ? `<div class="ka-chips">${chips}</div>` : ""}
+        </div>`;
+  }
+
+  /// Pending and failed are real states a browsing session runs into, so they
+  /// get a designed overlay rather than a half-empty card.
+  function renderTileState(c) {
     if (c.status === STATUS_PENDING) {
-      return `
-              <div class="d-flex align-items-center text-muted small">
-                  <div class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></div>
-                  Captioning…
-              </div>
-          `;
-    }
-    if (c.status === STATUS_FAILED) {
-      return `
-              <details class="small">
-                  <summary class="text-danger">Failed</summary>
-                  <p class="text-danger mb-0 mt-1">${escapeHtml(c.errorMessage ?? "unknown error")}</p>
-                  <p class="text-muted mb-0 mt-1">Uploaded ${escapeHtml(formatUploadedAt(c.uploadedAt))}</p>
-              </details>
-              <button type="button" class="btn btn-sm btn-outline-primary mt-2" data-action="retry">Retry</button>
-          `;
+      return `<div class="ka-tile-state"><span>captioning…</span></div>`;
     }
     return `
-          ${c.snippet ? `<p class="small mb-1">${c.snippet}</p>` : ""}
-          <details class="small">
-              <summary class="text-muted">Details</summary>
-              <p class="mb-0 mt-1">${escapeHtml(c.description ?? "")}</p>
-              <p class="text-muted mb-0 mt-1">Uploaded ${escapeHtml(formatUploadedAt(c.uploadedAt))}</p>
-          </details>
-      `;
+        <div class="ka-tile-state">
+            <div>
+                <div class="mb-2">caption failed</div>
+                <button type="button" class="btn btn-sm btn-outline-primary" data-action="retry">Retry</button>
+            </div>
+        </div>`;
   }
 
   function renderList(cartoons) {
@@ -113,28 +117,18 @@ window.CartoonCard = (function () {
 
   function renderCard(c) {
     gridSource.put(c);
-    const classes = ["card", "h-100"];
-    if (c.status === STATUS_PENDING) classes.push("opacity-75");
-    if (c.status === STATUS_FAILED) classes.push("border-danger");
+    const ready = c.status === STATUS_READY;
+    const cls = `ka-tile${c.status === STATUS_FAILED ? " ka-tile-failed" : ""}`;
+    const label = c.description
+      ? `Open: ${c.description.slice(0, 80)}`
+      : "Open cartoon";
 
     return `
         <div class="masonry-item" data-id="${c.id}">
-            <div class="${classes.join(" ")}">
-                <img src="${c.thumbnailUrl}" class="card-img-top"
-                     data-action="open" style="cursor: pointer"
-                     alt="${escapeHtml(c.description ?? "")}">
-                <div class="card-body p-2">
-                    <div class="d-flex justify-content-between align-items-center mb-1">
-                        <span class="badge bg-secondary">${escapeHtml(c.language)}</span>
-                        ${
-                          c.status === STATUS_READY
-                            ? `<button type="button" class="btn btn-link btn-sm p-0" data-action="share">Share</button>`
-                            : ""
-                        }
-                    </div>
-                    ${renderTagChips(c.tags)}
-                    ${renderBody(c)}
-                </div>
+            <div class="${cls}" data-action="open" role="button" tabindex="0"
+                 aria-label="${escapeHtml(label)}">
+                <img src="${c.thumbnailUrl}" alt="${escapeHtml(c.description ?? "")}" loading="lazy">
+                ${ready ? renderScrim(c) : renderTileState(c)}
             </div>
         </div>
     `;
@@ -414,6 +408,9 @@ window.CartoonCard = (function () {
     setConfirmMode(modal, false);
     setEditMode(modal, false);
     setRegenMode(modal, false);
+    // Navigating with the tag editor open used to carry it over to the next
+    // cartoon, still holding the previous one's chips.
+    setTagsMode(modal, false);
     updateNavButtons(modal);
     const idx = source.indexOf(c.id);
     if (idx !== -1) {
@@ -429,45 +426,58 @@ window.CartoonCard = (function () {
 
     modal.querySelector("#cartoon-lightbox-image").src = c.imageUrl;
     modal.querySelector("#cartoon-lightbox-image").alt = c.description ?? "";
-    modal.querySelector("#cartoon-lightbox-title").textContent =
-      c.originalFileName ?? "";
+    // The original filename is deliberately not shown. For URL uploads it is a
+    // hash-like fragment of a remote path and means nothing to a reader.
     modal.querySelector("#cartoon-lightbox-language").textContent =
       c.language ?? "";
 
     const descEl = modal.querySelector("#cartoon-lightbox-description");
+    // Re-clamp on every open: the previous cartoon may have been expanded.
+    descEl.className = "ka-viewer-caption is-clamped mb-1";
     if (c.status === STATUS_PENDING) {
       descEl.textContent = "Captioning…";
-      descEl.className = "small text-muted fst-italic mb-2";
+      descEl.classList.add("fst-italic");
     } else if (c.status === STATUS_FAILED) {
       descEl.textContent = c.errorMessage ?? "Captioning failed.";
-      descEl.className = "small text-danger mb-2";
+      descEl.classList.add("text-danger");
     } else {
       descEl.textContent = c.description ?? "";
-      descEl.className = "small mb-2";
     }
 
     const tagsViewEl = modal.querySelector("#cartoon-lightbox-tags");
-    if (tagsViewEl)
-      tagsViewEl.innerHTML = renderTagChips(c.tags).replace(/mb-1/, "");
+    if (tagsViewEl) tagsViewEl.innerHTML = renderTagChips(c.tags, "dark");
 
     modal.querySelector("#cartoon-lightbox-uploaded").textContent =
-      `Uploaded ${formatUploadedAt(c.uploadedAt)}`;
+      formatUploadedAt(c.uploadedAt);
 
     bootstrap.Modal.getOrCreateInstance(modal).show();
   }
 
   function attachLightboxHandler(container, { onAfterDelete } = {}) {
-    container.addEventListener("click", (event) => {
-      const img = event.target.closest('img[data-action="open"]');
-      if (!img) return;
-      const item = img.closest(".masonry-item");
+    function openFromEvent(event) {
+      // The whole tile opens the viewer now, so the Retry button and the tag
+      // links sitting inside it have to be allowed to act on their own.
+      if (event.target.closest("button[data-action], a")) return false;
+      const tile = event.target.closest('[data-action="open"]');
+      if (!tile) return false;
+      const item = tile.closest(".masonry-item");
       const id = Number(item?.dataset.id);
       const c = gridSource.get(id);
-      if (!c) return;
+      if (!c) return false;
       // Clicking a thumbnail always means "walk the grid", even if a random
       // walk was open a moment ago.
       source = gridSource;
       openLightbox(c);
+      return true;
+    }
+
+    container.addEventListener("click", openFromEvent);
+
+    // The tile is role="button", so it has to answer to Enter and Space too.
+    container.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      if (!event.target.closest('[data-action="open"]')) return;
+      if (openFromEvent(event)) event.preventDefault();
     });
 
     const modal = document.getElementById("cartoon-lightbox");
@@ -515,6 +525,12 @@ window.CartoonCard = (function () {
 
     prevBtn?.addEventListener("click", () => navigate(-1));
     nextBtn?.addEventListener("click", () => navigate(1));
+
+    // The caption clamps to two lines so it never covers the drawing it
+    // describes; clicking it expands, and the next open re-clamps.
+    descEl?.addEventListener("click", () => {
+      if (descEl.textContent.trim()) descEl.classList.toggle("is-clamped");
+    });
 
     const imgWrap = modal.querySelector(".cartoon-lightbox-image-wrap");
     if (imgWrap) attachSwipe(imgWrap);
@@ -659,7 +675,7 @@ window.CartoonCard = (function () {
       tagsChipsEl.innerHTML = editingTags
         .map(
           (t, i) =>
-            `<span class="badge text-bg-secondary d-inline-flex align-items-center">${escapeHtml(t)}<button type="button" class="tag-chip-remove" data-remove-index="${i}" aria-label="Remove ${escapeHtml(t)}">×</button></span>`,
+            `<span class="ka-tag">${escapeHtml(t)}<button type="button" class="tag-chip-remove" data-remove-index="${i}" aria-label="Remove ${escapeHtml(t)}"><svg aria-hidden="true"><use href="#i-close"></use></svg></button></span>`,
         )
         .join("");
     }
@@ -804,10 +820,7 @@ window.CartoonCard = (function () {
           currentCartoon = { ...currentCartoon, tags: data.tags };
           source.put(currentCartoon);
           if (tagsViewEl)
-            tagsViewEl.innerHTML = renderTagChips(currentCartoon.tags).replace(
-              /mb-1/,
-              "",
-            );
+            tagsViewEl.innerHTML = renderTagChips(currentCartoon.tags, "dark");
           setTagsMode(modal, false);
           if (descControls) descControls.classList.remove("d-none");
           setMessage("Tags saved.", "text-success");
@@ -886,7 +899,6 @@ window.CartoonCard = (function () {
     STATUS_FAILED,
     escapeHtml,
     formatUploadedAt,
-    renderBody,
     renderCard,
     renderList,
     attachRetryHandler,

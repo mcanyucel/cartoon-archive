@@ -6,22 +6,20 @@ const dropHint = document.getElementById("drop-hint");
 
 function setStatus(text, className) {
   status.textContent = text;
-  status.className = `mt-2 small ${className}`;
+  status.className = `mt-3 small ${className}`;
 }
 
 if (dropZone && fileInput) {
-  const HIGHLIGHT = ["border-primary", "bg-body-tertiary"];
-
   ["dragenter", "dragover"].forEach((ev) =>
     dropZone.addEventListener(ev, (e) => {
       e.preventDefault();
-      dropZone.classList.add(...HIGHLIGHT);
+      dropZone.classList.add("is-over");
     }),
   );
   ["dragleave", "drop"].forEach((ev) =>
     dropZone.addEventListener(ev, (e) => {
       e.preventDefault();
-      dropZone.classList.remove(...HIGHLIGHT);
+      dropZone.classList.remove("is-over");
     }),
   );
 
@@ -47,7 +45,7 @@ if (dropZone && fileInput) {
   fileInput.addEventListener("change", () => {
     if (!dropHint) return;
     const f = fileInput.files?.[0];
-    dropHint.textContent = f ? f.name : "Drop image here, or select a file";
+    dropHint.textContent = f ? f.name : "Drop an image here, or choose a file";
   });
 }
 
@@ -61,7 +59,7 @@ form.addEventListener("submit", async (event) => {
     setStatus("Provide either a file or a URL", "text-warning");
     return;
   }
-  setStatus("Uploading...", "text-muted");
+  setStatus("Uploading…", "text-body-secondary");
 
   try {
     const response = await fetch("/api/images", {

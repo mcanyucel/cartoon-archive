@@ -4,10 +4,14 @@
     ViewData["Title"] = "Search";
 }
 
-<h2>Search</h2>
 @if (!string.IsNullOrWhiteSpace(Model.Query))
 {
-    <p class="text-muted">Results for &ldquo;@Model.Query&rdquo;</p>
+    <h1 class="h4 mb-1">@Model.Query</h1>
+    <p class="ka-meta mb-3" id="results-count"></p>
+}
+else
+{
+    <p class="ka-meta mb-3">Type a word from a caption or a tag</p>
 }
 <div id="results-status" class="small mb-2"></div>
 <div id="search-results" class="masonry-gallery"></div>

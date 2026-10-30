@@ -36,9 +36,13 @@ function renderPager(page, pageSize, total) {
     return `<li class="${cls}"><a class="page-link" href="${href}"${aria}>${label}</a></li>`;
   };
 
+  // SVG from the sprite in _Layout, not « ‹ › ». A text glyph is placed by its
+  // font baseline and side bearings, so it never centres in a square control.
+  const icon = (id) => `<svg aria-hidden="true"><use href="#${id}"></use></svg>`;
+
   const parts = [];
-  parts.push(item(1, "«", { disabled: page === 1, ariaLabel: "First" }));
-  parts.push(item(page - 1, "‹", { disabled: page === 1, ariaLabel: "Previous" }));
+  parts.push(item(1, icon("i-first"), { disabled: page === 1, ariaLabel: "First" }));
+  parts.push(item(page - 1, icon("i-prev"), { disabled: page === 1, ariaLabel: "Previous" }));
 
   // Numeric window of ±2 around the current page.
   const start = Math.max(1, page - 2);
@@ -47,10 +51,24 @@ function renderPager(page, pageSize, total) {
     parts.push(item(p, String(p), { active: p === page }));
   }
 
-  parts.push(item(page + 1, "›", { disabled: page === totalPages, ariaLabel: "Next" }));
-  parts.push(item(totalPages, "»", { disabled: page === totalPages, ariaLabel: "Last" }));
+  parts.push(item(page + 1, icon("i-next"), { disabled: page === totalPages, ariaLabel: "Next" }));
+  parts.push(item(totalPages, icon("i-last"), { disabled: page === totalPages, ariaLabel: "Last" }));
 
   pager.innerHTML = `<ul class="pagination justify-content-center mb-0">${parts.join("")}</ul>`;
+}
+
+// Replaces the old "Gallery" heading: the archive's size is the one fact worth
+// putting at the top of a page that is otherwise all pictures.
+function renderCount(total, totalPages) {
+  const el = document.getElementById("gallery-count");
+  if (!el) return;
+  if (total === 0) {
+    el.textContent = "";
+    return;
+  }
+  const drawings = `${total} drawing${total === 1 ? "" : "s"}`;
+  el.textContent =
+    totalPages > 1 ? `${drawings} · ${totalPages} pages` : drawings;
 }
 
 function currentPage() {
@@ -89,6 +107,7 @@ async function loadGallery() {
 
     renderGallery(data.items);
     renderPager(data.page, data.pageSize, data.total);
+    renderCount(data.total, totalPages);
     updatePolling(data.items);
   } catch (e) {
     gallery.innerHTML = `<p class="text-danger">Failed to load gallery: ${CartoonCard.escapeHtml(e.message)}</p>`;

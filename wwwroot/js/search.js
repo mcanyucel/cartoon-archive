@@ -8,8 +8,16 @@ function setResultsStatus(text, className) {
 }
 
 function renderResults(cartoons) {
+  const count = document.getElementById("results-count");
+  if (count)
+    count.textContent =
+      cartoons.length === 0
+        ? "no matches"
+        : `${cartoons.length} match${cartoons.length === 1 ? "" : "es"}`;
+
   if (cartoons.length === 0) {
-    results.innerHTML = '<p class="text-muted">No matches.</p>';
+    results.innerHTML =
+      '<p class="text-body-secondary">Nothing matched. Try a shorter root — search matches prefixes, so <em>kitap</em> finds <em>kitabı</em> but not the other way round.</p>';
     return;
   }
   results.innerHTML = CartoonCard.renderList(cartoons);
@@ -19,7 +27,8 @@ async function loadResults() {
   const params = new URLSearchParams(window.location.search);
   const q = (params.get("q") ?? "").trim();
   if (!q) {
-    results.innerHTML = '<p class="text-muted">Enter a query in the top bar to search.</p>';
+    results.innerHTML =
+      '<p class="text-body-secondary">Search the captions from the bar above.</p>';
     return;
   }
   try {

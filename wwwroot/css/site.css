@@ -1,46 +1,230 @@
-html {
-  font-size: 14px;
+/* ============================================================================
+   Karikatür Arşivi
+
+   Bootstrap 5.3 with its CSS variables repointed. The archive should stay out
+   of the artwork's way, so the ground is a cool neutral rather than a tinted
+   cream — a warm background shifts how every drawing sitting on it reads.
+
+   Tokens are declared once per theme below; everything further down consumes
+   them through var(). Nothing should hardcode a colour past this block.
+   ========================================================================= */
+
+[data-bs-theme="light"] {
+  --ka-ground: #f7f7f5;
+  --ka-surface: #ffffff;
+  --ka-surface-2: #efefec;
+  --ka-ink: #1a1d21;
+  --ka-muted: #6b7076;
+  --ka-line: #e3e4e2;
+  --ka-accent: #1f6f6b;
+  --ka-accent-rgb: 31, 111, 107;
+  --ka-accent-ink: #ffffff;
+  --ka-shadow: 0 1px 2px rgba(16, 18, 20, 0.06), 0 8px 24px rgba(16, 18, 20, 0.06);
+  --ka-shadow-lift: 0 2px 6px rgba(16, 18, 20, 0.1), 0 16px 40px rgba(16, 18, 20, 0.14);
 }
 
-@media (min-width: 768px) {
-  html {
-    font-size: 16px;
-  }
+[data-bs-theme="dark"] {
+  --ka-ground: #0e1113;
+  --ka-surface: #16191c;
+  --ka-surface-2: #1d2125;
+  --ka-ink: #e8e9e7;
+  --ka-muted: #8b9196;
+  --ka-line: #24282c;
+  --ka-accent: #4fb3ac;
+  --ka-accent-rgb: 79, 179, 172;
+  --ka-accent-ink: #07100f;
+  --ka-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px rgba(0, 0, 0, 0.3);
+  --ka-shadow-lift: 0 2px 6px rgba(0, 0, 0, 0.5), 0 16px 40px rgba(0, 0, 0, 0.45);
 }
 
-.btn:focus,
-.btn:active:focus,
-.btn-link.nav-link:focus,
-.form-control:focus,
-.form-check-input:focus {
-  box-shadow:
-    0 0 0 0.1rem var(--bs-body-bg),
-    0 0 0 0.25rem #258cfb;
+/* The viewer is its own dark room in both themes — artwork is judged against a
+   neutral ground, never against the page. */
+:root {
+  --ka-viewer: #101214;
+  --ka-viewer-ink: #e9eae8;
+  --ka-serif: Georgia, "Iowan Old Style", "Palatino Linotype", "Times New Roman", serif;
+  --ka-mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
 }
 
-html {
-  position: relative;
-  min-height: 100%;
+/* ---- Bootstrap remapping --------------------------------------------------
+   Bootstrap 5.3 reads these at runtime, so repointing them restyles the
+   framework rather than fighting it with overrides. */
+[data-bs-theme="light"],
+[data-bs-theme="dark"] {
+  --bs-body-bg: var(--ka-ground);
+  --bs-body-color: var(--ka-ink);
+  --bs-emphasis-color: var(--ka-ink);
+  --bs-secondary-color: var(--ka-muted);
+  --bs-tertiary-bg: var(--ka-surface);
+  --bs-border-color: var(--ka-line);
+  --bs-primary: var(--ka-accent);
+  --bs-primary-rgb: var(--ka-accent-rgb);
+  --bs-link-color: var(--ka-accent);
+  --bs-link-hover-color: var(--ka-accent);
+  --bs-focus-ring-color: rgba(var(--ka-accent-rgb), 0.4);
 }
 
+/* Button variants bake literal colours into per-class custom properties at
+   build time, so --bs-primary alone does not reach them. */
+.btn-primary {
+  --bs-btn-bg: var(--ka-accent);
+  --bs-btn-border-color: var(--ka-accent);
+  --bs-btn-color: var(--ka-accent-ink);
+  --bs-btn-hover-bg: var(--ka-accent);
+  --bs-btn-hover-border-color: var(--ka-accent);
+  --bs-btn-hover-color: var(--ka-accent-ink);
+  --bs-btn-active-bg: var(--ka-accent);
+  --bs-btn-active-border-color: var(--ka-accent);
+  --bs-btn-disabled-bg: var(--ka-accent);
+  --bs-btn-disabled-border-color: var(--ka-accent);
+}
+
+.btn-primary:hover {
+  filter: brightness(1.08);
+}
+
+.btn-outline-primary {
+  --bs-btn-color: var(--ka-accent);
+  --bs-btn-border-color: var(--ka-line);
+  --bs-btn-hover-bg: var(--ka-accent);
+  --bs-btn-hover-border-color: var(--ka-accent);
+  --bs-btn-hover-color: var(--ka-accent-ink);
+  --bs-btn-active-bg: var(--ka-accent);
+  --bs-btn-active-border-color: var(--ka-accent);
+  --bs-btn-active-color: var(--ka-accent-ink);
+}
+
+/* ---- Typography ----------------------------------------------------------- */
 body {
-  margin-bottom: 60px;
+  font-size: 16px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
 }
 
-.form-floating > .form-control-plaintext::placeholder,
-.form-floating > .form-control::placeholder {
-  color: var(--bs-secondary-color);
-  text-align: end;
+h1,
+h2,
+h3,
+.ka-brand {
+  font-family: var(--ka-serif);
+  font-weight: 400;
+  letter-spacing: -0.012em;
 }
 
-.form-floating > .form-control-plaintext:focus::placeholder,
-.form-floating > .form-control:focus::placeholder {
-  text-align: start;
+h1,
+h2 {
+  text-wrap: balance;
 }
 
+/* An archive is a catalogue: counts, positions and dates are set in monospace
+   with tabular figures so digits line up as they change. */
+.ka-meta {
+  font-family: var(--ka-mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ka-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- Chrome ---------------------------------------------------------------- */
+.navbar {
+  background: var(--ka-surface);
+  border-bottom: 1px solid var(--ka-line);
+}
+
+.ka-brand {
+  font-size: 1.12rem;
+  text-decoration: none;
+  color: var(--ka-ink);
+}
+
+.navbar .nav-link {
+  color: var(--ka-muted);
+  font-size: 0.9rem;
+  border-radius: 4px;
+  padding: 0.3rem 0.6rem;
+}
+
+.navbar .nav-link:hover,
+.navbar .nav-link.active {
+  color: var(--ka-ink);
+  background: var(--ka-surface-2);
+}
+
+/* Pill search field — softer than a bordered form control sitting in a bar. */
+.ka-search {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: var(--ka-ground);
+  border: 1px solid var(--ka-line);
+  border-radius: 100px;
+  padding: 0.35rem 0.9rem;
+}
+
+.ka-search input {
+  border: 0;
+  background: none;
+  color: var(--ka-ink);
+  font-size: 0.875rem;
+  outline: none;
+  width: 100%;
+  min-width: 0;
+}
+
+.ka-search input::placeholder {
+  color: var(--ka-muted);
+}
+
+.ka-search svg {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  color: var(--ka-muted);
+}
+
+/* Round icon buttons. Contents are SVG, never a text glyph — a glyph is placed
+   by the font's baseline and side bearings, which is why ‹ and › never sat in
+   the middle of their circles. */
+.ka-icon-btn {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  flex: none;
+  padding: 0;
+  border: 1px solid var(--ka-line);
+  border-radius: 50%;
+  background: var(--ka-surface);
+  color: var(--ka-muted);
+  cursor: pointer;
+}
+
+.ka-icon-btn:hover {
+  color: var(--ka-ink);
+  border-color: var(--ka-muted);
+}
+
+.ka-icon-btn svg {
+  width: 16px;
+  height: 16px;
+  display: block;
+}
+
+footer.footer {
+  border-top: 1px solid var(--ka-line);
+  margin-top: 3rem;
+  padding: 1.25rem 0;
+  color: var(--ka-muted);
+  font-size: 0.85rem;
+}
+
+/* ---- Gallery ---------------------------------------------------------------
+   CSS columns rather than a row grid: cartoon aspect ratios vary too much to
+   tile without either cropping them or leaving ragged gaps. */
 .masonry-gallery {
   column-count: 2;
-  column-gap: 1rem;
+  column-gap: 0.875rem;
 }
 
 @media (min-width: 768px) {
@@ -49,7 +233,7 @@ body {
   }
 }
 
-@media (min-width: 992px) {
+@media (min-width: 1200px) {
   .masonry-gallery {
     column-count: 4;
   }
@@ -57,64 +241,415 @@ body {
 
 .masonry-item {
   break-inside: avoid;
-  margin-bottom: 1rem;
+  margin-bottom: 0.875rem;
   display: block;
 }
 
-.cartoon-lightbox-image-wrap {
+/* The tile is the artwork. No border, no card body, no permanent controls —
+   caption and tags live in a scrim that appears only on hover. */
+.ka-tile {
   position: relative;
-  display: inline-block;
+  display: block;
   width: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--ka-surface);
+  box-shadow: var(--ka-shadow);
+  cursor: pointer;
+  transition:
+    box-shadow 160ms ease,
+    transform 160ms ease;
+}
+
+.ka-tile:hover,
+.ka-tile:focus-visible {
+  box-shadow: var(--ka-shadow-lift);
+  transform: translateY(-2px);
+  outline: none;
+}
+
+.ka-tile:focus-visible {
+  box-shadow: var(--ka-shadow-lift), 0 0 0 2px var(--ka-accent);
+}
+
+.ka-tile img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.ka-scrim {
+  position: absolute;
+  inset: auto 0 0 0;
+  padding: 1.75rem 0.75rem 0.6rem;
+  background: linear-gradient(to top, rgba(12, 14, 16, 0.82), transparent);
+  color: #f2f3f1;
+  opacity: 0;
+  transition: opacity 160ms ease;
+  pointer-events: none;
+  text-align: left;
+}
+
+.ka-tile:hover .ka-scrim,
+.ka-tile:focus-visible .ka-scrim {
+  opacity: 1;
+}
+
+.ka-scrim-caption {
+  font-size: 0.78rem;
+  line-height: 1.4;
+  margin: 0 0 0.35rem;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.ka-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+/* The scrim itself ignores the pointer so it never blocks the tile, but the tag
+   links inside it stay clickable - losing one-click tag navigation from the
+   grid would be a real regression. */
+.ka-scrim a.ka-chip {
+  pointer-events: auto;
+  text-decoration: none;
+}
+
+.ka-scrim a.ka-chip:hover {
+  background: var(--ka-accent);
+  color: var(--ka-accent-ink);
+}
+
+.ka-chip {
+  font-family: var(--ka-mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  padding: 0.12rem 0.45rem;
+  border-radius: 100px;
+  background: rgba(255, 255, 255, 0.16);
+  color: #f2f3f1;
+  backdrop-filter: blur(3px);
+}
+
+/* States that exist and therefore deserve designing, rather than falling out
+   of a default card. */
+.ka-tile-state {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 0.75rem;
+  text-align: center;
+  background: var(--ka-surface-2);
+  color: var(--ka-muted);
+  font-family: var(--ka-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.ka-tile-failed .ka-tile-state {
+  color: var(--bs-danger);
+}
+
+/* ---- Viewer ----------------------------------------------------------------
+   Still a Bootstrap modal — the JS lifecycle and every event random-browse.js
+   listens for are unchanged. Only the body is rebuilt around the image. */
+#cartoon-lightbox .modal-content {
+  background: var(--ka-viewer);
+  border: 0;
+  border-radius: 0;
+  color: var(--ka-viewer-ink);
+}
+
+#cartoon-lightbox .modal-body {
+  position: relative;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+}
+
+.ka-viewer-stage {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 3.5rem 4.5rem 5rem;
+}
+
+@media (max-width: 575.98px) {
+  .ka-viewer-stage {
+    padding: 3.25rem 0.75rem 6rem;
+  }
+}
+
+.ka-viewer-stage img {
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  border-radius: 3px;
+  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.5);
+}
+
+.ka-viewer-top {
+  position: absolute;
+  inset: 0 0 auto 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.7rem 0.85rem;
+  background: linear-gradient(to bottom, rgba(0, 0, 0, 0.55), transparent);
+}
+
+.ka-viewer-pos {
+  font-family: var(--ka-mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: rgba(255, 255, 255, 0.72);
+  font-variant-numeric: tabular-nums;
+}
+
+.ka-viewer-tools {
+  margin-left: auto;
+  display: flex;
+  gap: 0.35rem;
+}
+
+.ka-ghost-btn {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  flex: none;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.85);
+  cursor: pointer;
+}
+
+.ka-ghost-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.22);
+  color: #fff;
+}
+
+.ka-ghost-btn:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.ka-ghost-btn svg {
+  width: 16px;
+  height: 16px;
+  display: block;
 }
 
 .cartoon-lightbox-nav {
   position: absolute;
   top: 50%;
   transform: translateY(-50%);
-  width: 2.5rem;
-  height: 2.5rem;
+  z-index: 3;
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
   padding: 0;
-  border: none;
+  border: 0;
   border-radius: 50%;
-  background: rgba(0, 0, 0, 0.45);
+  background: rgba(255, 255, 255, 0.12);
   color: #fff;
-  font-size: 1.75rem;
-  line-height: 1;
   cursor: pointer;
-  opacity: 0.75;
-  transition: opacity 0.15s;
+  transition: background 140ms ease;
 }
 
 .cartoon-lightbox-nav:hover:not(:disabled) {
-  opacity: 1;
+  background: rgba(255, 255, 255, 0.26);
 }
 
 .cartoon-lightbox-nav:disabled {
-  opacity: 0.15;
+  opacity: 0.18;
   cursor: default;
 }
 
+.cartoon-lightbox-nav svg {
+  width: 21px;
+  height: 21px;
+  display: block;
+}
+
 .cartoon-lightbox-nav-prev {
-  left: 0.5rem;
+  left: 0.85rem;
 }
 
 .cartoon-lightbox-nav-next {
-  right: 0.5rem;
+  right: 0.85rem;
+}
+
+.ka-viewer-sheet {
+  position: absolute;
+  inset: auto 0 0 0;
+  z-index: 3;
+  padding: 2.5rem 1.1rem 0.9rem;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.88), transparent);
+  display: flex;
+  align-items: flex-end;
+  gap: 1rem;
+}
+
+.ka-viewer-caption {
+  font-size: 0.85rem;
+  line-height: 1.5;
+  margin: 0;
+  max-width: 70ch;
+  color: var(--ka-viewer-ink);
+}
+
+/* Collapsed to two lines until the caption is clicked — a long caption should
+   not cover the drawing it describes. */
+.ka-viewer-caption.is-clamped {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.ka-viewer-side {
+  margin-left: auto;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+/* Editing panels sit above the scrim rather than in a sidebar, so nothing
+   permanently occupies space next to the drawing. */
+.ka-viewer-panel {
+  position: absolute;
+  inset: auto 0 0 0;
+  z-index: 4;
+  max-height: 70%;
+  overflow-y: auto;
+  padding: 1rem 1.1rem 1.1rem;
+  background: var(--ka-surface);
+  color: var(--ka-ink);
+  border-top: 1px solid var(--ka-line);
+}
+
+.ka-viewer-panel .form-control,
+.ka-viewer-panel .form-select {
+  background: var(--ka-ground);
+  border-color: var(--ka-line);
+  color: var(--ka-ink);
+}
+
+/* ---- Tag chips (light surfaces) -------------------------------------------- */
+.ka-tag {
+  display: inline-flex;
+  align-items: center;
+  font-family: var(--ka-mono);
+  font-size: 11px;
+  letter-spacing: 0.03em;
+  padding: 0.15rem 0.5rem;
+  border-radius: 100px;
+  background: var(--ka-surface-2);
+  color: var(--ka-muted);
+  text-decoration: none;
+}
+
+a.ka-tag:hover {
+  color: var(--ka-accent-ink);
+  background: var(--ka-accent);
 }
 
 .tag-chip-remove {
   appearance: none;
   background: none;
-  border: none;
+  border: 0;
   color: inherit;
   opacity: 0.7;
-  padding: 0 0 0 0.35em;
-  font-weight: bold;
+  padding: 0 0 0 0.3rem;
   line-height: 1;
   cursor: pointer;
+  display: inline-grid;
+  place-items: center;
 }
 
 .tag-chip-remove:hover {
   opacity: 1;
 }
 
+.tag-chip-remove svg {
+  width: 10px;
+  height: 10px;
+  display: block;
+}
+
+/* ---- Pager ------------------------------------------------------------------ */
+.pagination {
+  --bs-pagination-color: var(--ka-muted);
+  --bs-pagination-bg: transparent;
+  --bs-pagination-border-color: transparent;
+  --bs-pagination-hover-color: var(--ka-ink);
+  --bs-pagination-hover-bg: var(--ka-surface-2);
+  --bs-pagination-hover-border-color: transparent;
+  --bs-pagination-focus-bg: var(--ka-surface-2);
+  --bs-pagination-active-bg: var(--ka-accent);
+  --bs-pagination-active-border-color: var(--ka-accent);
+  --bs-pagination-active-color: var(--ka-accent-ink);
+  --bs-pagination-disabled-bg: transparent;
+  --bs-pagination-disabled-border-color: transparent;
+}
+
+.pagination .page-link {
+  border-radius: 4px;
+  display: grid;
+  place-items: center;
+  min-width: 2.1rem;
+  height: 2.1rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.pagination .page-link svg {
+  width: 15px;
+  height: 15px;
+  display: block;
+}
+
+/* ---- Upload ------------------------------------------------------------------ */
+.ka-dropzone {
+  border: 1px dashed var(--ka-line);
+  border-radius: 8px;
+  background: var(--ka-surface);
+  padding: 2.5rem 1.25rem;
+  text-align: center;
+  color: var(--ka-muted);
+  transition:
+    border-color 140ms ease,
+    background 140ms ease;
+}
+
+.ka-dropzone.is-over {
+  border-color: var(--ka-accent);
+  background: var(--ka-surface-2);
+  color: var(--ka-ink);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ka-tile,
+  .ka-scrim,
+  .cartoon-lightbox-nav,
+  .ka-dropzone {
+    transition: none;
+  }
+}

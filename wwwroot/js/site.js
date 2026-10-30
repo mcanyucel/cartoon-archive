@@ -2,8 +2,12 @@
   const toggle = document.getElementById("theme-toggle");
   const icon = document.getElementById("theme-icon");
 
+  // Repoints the <use> at a sprite symbol rather than swapping an emoji: the
+  // emoji rendered at whatever size and baseline the platform font chose, which
+  // is why it never sat centred in its button.
   function updateIcon(theme) {
-    if (icon) icon.textContent = theme === "dark" ? "☀️" : "🌙";
+    const use = icon?.querySelector("use");
+    if (use) use.setAttribute("href", theme === "dark" ? "#i-sun" : "#i-moon");
   }
 
   updateIcon(document.documentElement.getAttribute("data-bs-theme"));
