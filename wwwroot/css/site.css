@@ -387,19 +387,29 @@ footer.footer {
   place-items: center;
 }
 
-/* Scales small drawings UP as well as large ones down. max-width/max-height
-   alone only ever shrink, so a 183x240 original used to render as a postage
-   stamp in the middle of a full-screen viewer.
+/* Fits the drawing to the stage's *height*, not its width, and scales small
+   drawings UP as well as large ones down - max-width/max-height alone only ever
+   shrink, so a 183x240 original used to render as a postage stamp.
 
-   Upscaling is capped at 4x natural size. Nothing in this archive is wider than
-   ~1370px and most are under 700px, so without a ceiling a small scan would be
-   stretched arbitrarily far; with one, the height constraint usually binds
-   first anyway. --ka-nat-w is set from naturalWidth by cartoon-card.js on each
-   load; the fallback keeps large images correct if that never runs. */
+   Nearly every scan here is portrait, so the old width-driven box asked for a
+   height several times the stage and object-fit had to swallow the difference:
+   the drawing ended up letterboxed inside a box far wider than itself, so the
+   frame, the shadow and the hit area all belonged to empty space rather than to
+   the artwork.
+
+   Upscaling is capped at --ka-max-zoom times natural size, so a small scan is
+   not blown up to fill 1080p just because the height constraint binds first.
+   --ka-nat-w/--ka-nat-h are set from naturalWidth/naturalHeight by
+   cartoon-card.js on each load; the 99999 fallbacks mean "uncapped" for the
+   frame before that runs.
+
+   max-width and object-fit stay as the safety net for the rare landscape scan
+   wider than the stage: height is definite there, so contain keeps the pixels
+   inside even though the box is taller than the drawing. */
 .ka-viewer-stage img {
-  width: min(100%, calc(var(--ka-nat-w, 99999) * 4px));
-  height: auto;
-  max-height: 100%;
+  height: min(100%, calc(var(--ka-nat-h, 99999) * var(--ka-max-zoom, 1.5) * 1px));
+  width: auto;
+  max-width: min(100%, calc(var(--ka-nat-w, 99999) * var(--ka-max-zoom, 1.5) * 1px));
   object-fit: contain;
   border-radius: 3px;
   box-shadow: 0 12px 48px rgba(0, 0, 0, 0.5);

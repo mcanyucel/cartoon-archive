@@ -446,11 +446,13 @@ window.CartoonCard = (function () {
       ?.classList.toggle("is-busy", panelOpen || confirming);
   }
 
-  /// Publishes the image's intrinsic width to CSS so the stylesheet can cap how
-  /// far a small drawing is allowed to be enlarged. See .ka-viewer-stage img.
+  /// Publishes the image's intrinsic size to CSS so the stylesheet can fit the
+  /// box to the drawing and cap how far a small one is allowed to be enlarged.
+  /// See .ka-viewer-stage img.
   function applyNaturalSize(img) {
     if (!img?.naturalWidth) return;
     img.style.setProperty("--ka-nat-w", String(img.naturalWidth));
+    img.style.setProperty("--ka-nat-h", String(img.naturalHeight));
   }
 
   function openLightbox(c) {
@@ -488,6 +490,7 @@ window.CartoonCard = (function () {
     // Clear before swapping src so the outgoing image's dimensions can't cap
     // the incoming one for the frame before its load event fires.
     imgEl.style.removeProperty("--ka-nat-w");
+    imgEl.style.removeProperty("--ka-nat-h");
     imgEl.src = c.imageUrl;
     imgEl.alt = c.description ?? "";
     // A cached image may already be complete, in which case load never fires.
